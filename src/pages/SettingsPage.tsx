@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/Button'
 import { TelegramSettings } from '@/components/settings/TelegramSettings'
 import { BrowserNotifSettings } from '@/components/settings/BrowserNotifSettings'
 import { AlertPreferences } from '@/components/settings/AlertPreferences'
+import { ShippingBaremSettings } from '@/components/settings/ShippingBaremSettings'
 import { useNotifications } from '@/hooks/useNotifications'
 import { Shield, Store, Key } from 'lucide-react'
 import type { Database } from '@/types/database'
@@ -13,6 +14,9 @@ type StoreRow = Database['public']['Tables']['stores']['Row']
 
 interface SettingsPageProps {
   store: StoreRow
+  shippingRates: unknown[]
+  storeId: string
+  marketplace: string
 }
 
 const MARKETPLACE_LABELS: Record<string, string> = {
@@ -21,7 +25,7 @@ const MARKETPLACE_LABELS: Record<string, string> = {
   amazon_tr: 'Amazon TR',
 }
 
-export function SettingsPage({ store }: SettingsPageProps) {
+export function SettingsPage({ store, storeId, marketplace }: SettingsPageProps) {
   const {
     settings: notifSettings,
     loading: notifLoading,
@@ -35,7 +39,7 @@ export function SettingsPage({ store }: SettingsPageProps) {
 
   return (
     <div className="animate-fade-in">
-      <Header title="Ayarlar" subtitle="Hesap, magaza ve bildirim ayarlari" />
+      <Header title="Ayarlar" subtitle="Hesap, magaza, kargo ve bildirim ayarlari" />
       <div className="max-w-2xl space-y-5 p-6">
         <Card>
           <CardHeader
@@ -54,6 +58,8 @@ export function SettingsPage({ store }: SettingsPageProps) {
             </div>
           </div>
         </Card>
+
+        <ShippingBaremSettings storeId={storeId} marketplace={marketplace} />
 
         <Card>
           <CardHeader

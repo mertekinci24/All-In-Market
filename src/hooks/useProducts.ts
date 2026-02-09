@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
-import { calculateProfit, getDesiShippingCost } from '@/lib/financial-engine'
+import { calculateProfit, resolveShippingCost } from '@/lib/financial-engine'
+import type { ShippingRate } from '@/lib/financial-engine'
 import type { Database } from '@/types/database'
 import type { ProfitResult } from '@/types'
 
@@ -12,14 +13,19 @@ export interface ProductWithProfit extends ProductRow {
   profit: ProfitResult
 }
 
-function computeProfit(p: ProductRow): ProfitResult {
+function computeProfit(p: ProductRow, shippingRates: ShippingRate[]): ProfitResult {
+  const salesPrice = p.sales_price ?? 0
+  const shippingCost = p.shipping_cost > 0
+    ? p.shipping_cost
+    : resolveShippingCost(p.desi, salesPrice, shippingRates)
+
   return calculateProfit({
-    salesPrice: p.sales_price ?? 0,
+    salesPrice,
     buyPrice: p.buy_price,
     commissionRate: p.commission_rate,
     vatRate: p.vat_rate,
     desi: p.desi,
-    shippingCost: p.shipping_cost > 0 ? p.shipping_cost : getDesiShippingCost(p.desi),
+    shippingCost,
     extraCost: p.extra_cost,
     adCost: p.ad_cost,
   })
@@ -27,9 +33,16 @@ function computeProfit(p: ProductRow): ProfitResult {
 
 const PRODUCT_COLUMNS = 'id, store_id, external_id, name, buy_price, sales_price, competitor_price, commission_rate, vat_rate, desi, shipping_cost, extra_cost, ad_cost, stock_status, image_url, category, marketplace_url, last_scraped, created_at, updated_at'
 
-export function useProducts(storeId: string | undefined) {
+export function useProducts(storeId: string | undefined, shippingRates: ShippingRate[] = []) {
   const [products, setProducts] = useState<ProductWithProfit[]>([])
   const [loading, setLoading] = useState(true)
+
+  const enrichProducts = useCallback((rows: ProductRow[]) => {
+    return rows.map((p) => ({
+      ...p,
+      profit: computeProfit(p, shippingRates),
+    }))
+  }, [shippingRates])
 
   const fetchProducts = useCallback(async () => {
     if (!storeId) {
@@ -45,17 +58,22 @@ export function useProducts(storeId: string | undefined) {
       .order('updated_at', { ascending: false })
 
     const rows = (data ?? []) as ProductRow[]
-    const enriched = rows.map((p) => ({
-      ...p,
-      profit: computeProfit(p),
-    }))
-    setProducts(enriched)
+    setProducts(enrichProducts(rows))
     setLoading(false)
-  }, [storeId])
+  }, [storeId, enrichProducts])
 
   useEffect(() => {
     fetchProducts()
   }, [fetchProducts])
+
+  useEffect(() => {
+    if (products.length > 0 && shippingRates.length > 0) {
+      setProducts((prev) => prev.map((p) => ({
+        ...p,
+        profit: computeProfit(p, shippingRates),
+      })))
+    }
+  }, [shippingRates])
 
   const addProduct = async (product: Omit<ProductInsert, 'store_id'>) => {
     if (!storeId) return null
@@ -67,7 +85,7 @@ export function useProducts(storeId: string | undefined) {
       .maybeSingle()
     if (error || !data) return null
     const row = data as ProductRow
-    const enriched: ProductWithProfit = { ...row, profit: computeProfit(row) }
+    const enriched: ProductWithProfit = { ...row, profit: computeProfit(row, shippingRates) }
     setProducts((prev) => [enriched, ...prev])
     return enriched
   }
@@ -82,7 +100,7 @@ export function useProducts(storeId: string | undefined) {
       .maybeSingle()
     if (error || !data) return null
     const row = data as ProductRow
-    const enriched: ProductWithProfit = { ...row, profit: computeProfit(row) }
+    const enriched: ProductWithProfit = { ...row, profit: computeProfit(row, shippingRates) }
     setProducts((prev) => prev.map((p) => (p.id === id ? enriched : p)))
     return enriched
   }

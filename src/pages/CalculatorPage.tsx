@@ -1,15 +1,27 @@
-import { useState } from 'react'
-import { Calculator, ArrowRight } from 'lucide-react'
+import { useState, useMemo } from 'react'
+import { Calculator, ArrowRight, Truck } from 'lucide-react'
 import { Header } from '@/components/layout/Header'
 import { Card, CardHeader } from '@/components/ui/Card'
 import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
-import { calculateProfit, getDesiShippingCost } from '@/lib/financial-engine'
+import { calculateProfit, resolveShippingCost } from '@/lib/financial-engine'
+import type { ShippingRate } from '@/lib/financial-engine'
 import { cn } from '@/lib/utils'
 import type { ProfitResult } from '@/types'
 
-export function CalculatorPage() {
+const MARKETPLACE_LABELS: Record<string, string> = {
+  trendyol: 'Trendyol',
+  hepsiburada: 'Hepsiburada',
+  amazon_tr: 'Amazon TR',
+}
+
+interface CalculatorPageProps {
+  shippingRates: ShippingRate[]
+  marketplace: string
+}
+
+export function CalculatorPage({ shippingRates, marketplace }: CalculatorPageProps) {
   const [salesPrice, setSalesPrice] = useState('')
   const [buyPrice, setBuyPrice] = useState('')
   const [commissionRate, setCommissionRate] = useState('15')
@@ -17,22 +29,33 @@ export function CalculatorPage() {
   const [desi, setDesi] = useState('1')
   const [extraCost, setExtraCost] = useState('0')
   const [adCost, setAdCost] = useState('0')
+  const [manualShipping, setManualShipping] = useState('')
   const [result, setResult] = useState<ProfitResult | null>(null)
 
-  function handleCalculate() {
+  const resolvedShipping = useMemo(() => {
     const desiVal = parseFloat(desi) || 1
+    const priceVal = parseFloat(salesPrice) || 0
+    return resolveShippingCost(desiVal, priceVal, shippingRates)
+  }, [desi, salesPrice, shippingRates])
+
+  const effectiveShipping = manualShipping ? parseFloat(manualShipping) || 0 : resolvedShipping
+
+  function handleCalculate() {
     const profitResult = calculateProfit({
       salesPrice: parseFloat(salesPrice) || 0,
       buyPrice: parseFloat(buyPrice) || 0,
       commissionRate: (parseFloat(commissionRate) || 0) / 100,
       vatRate: parseFloat(vatRate) || 0,
-      desi: desiVal,
-      shippingCost: getDesiShippingCost(desiVal),
+      desi: parseFloat(desi) || 1,
+      shippingCost: effectiveShipping,
       extraCost: parseFloat(extraCost) || 0,
       adCost: parseFloat(adCost) || 0,
     })
     setResult(profitResult)
   }
+
+  const desiRates = shippingRates.filter((r) => r.rate_type === 'desi')
+  const priceRates = shippingRates.filter((r) => r.rate_type === 'price')
 
   return (
     <div className="animate-fade-in">
@@ -41,7 +64,15 @@ export function CalculatorPage() {
         <div className="grid grid-cols-1 gap-5 lg:grid-cols-5">
           <div className="lg:col-span-2 space-y-4">
             <Card>
-              <CardHeader title="Maliyet Girdileri" subtitle="TL cinsinden degerler girin" />
+              <CardHeader
+                title="Maliyet Girdileri"
+                subtitle="TL cinsinden degerler girin"
+                action={
+                  <Badge variant="neutral">
+                    {MARKETPLACE_LABELS[marketplace] ?? marketplace}
+                  </Badge>
+                }
+              />
               <div className="space-y-3">
                 <Input
                   label="Satis Fiyati (TL)"
@@ -80,6 +111,31 @@ export function CalculatorPage() {
                   value={desi}
                   onChange={(e) => setDesi(e.target.value)}
                 />
+
+                <div className="rounded-lg border border-white/5 bg-surface-800/30 p-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-1.5">
+                      <Truck className="h-3.5 w-3.5 text-brand-400" />
+                      <span className="text-xs font-medium text-gray-300">Kargo Ucreti</span>
+                    </div>
+                    <span className="text-sm font-semibold text-brand-400 tabular-nums">
+                      {effectiveShipping.toLocaleString('tr-TR')} TL
+                    </span>
+                  </div>
+                  {!manualShipping && (
+                    <p className="text-[11px] text-gray-500">
+                      Barem tablosundan otomatik hesaplandi
+                    </p>
+                  )}
+                  <Input
+                    label="Manuel Kargo (bos = otomatik)"
+                    type="number"
+                    placeholder="Otomatik barem"
+                    value={manualShipping}
+                    onChange={(e) => setManualShipping(e.target.value)}
+                  />
+                </div>
+
                 <div className="grid grid-cols-2 gap-3">
                   <Input
                     label="Ek Giderler (TL)"
@@ -102,6 +158,65 @@ export function CalculatorPage() {
                 </Button>
               </div>
             </Card>
+
+            {shippingRates.length > 0 && (
+              <Card>
+                <CardHeader
+                  title="Kargo Barem Tablosu"
+                  subtitle={MARKETPLACE_LABELS[marketplace] ?? marketplace}
+                  action={
+                    <Truck className="h-4 w-4 text-gray-500" />
+                  }
+                />
+                {desiRates.length > 0 && (
+                  <div className="mb-3">
+                    <p className="text-[11px] font-medium text-gray-500 uppercase tracking-wider mb-2">
+                      Desi Bazli
+                    </p>
+                    <div className="space-y-1">
+                      {[...desiRates].sort((a, b) => a.min_value - b.min_value).map((rate) => (
+                        <div
+                          key={`desi-${rate.min_value}`}
+                          className="flex items-center justify-between text-xs py-1 px-2 rounded transition-colors hover:bg-white/[0.02]"
+                        >
+                          <span className="text-gray-400">
+                            {rate.min_value} - {rate.max_value} desi
+                          </span>
+                          <span className="font-medium text-gray-300 tabular-nums">
+                            {rate.cost.toLocaleString('tr-TR')} TL
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {priceRates.length > 0 && (
+                  <div>
+                    <p className="text-[11px] font-medium text-gray-500 uppercase tracking-wider mb-2">
+                      Fiyat Bazli
+                    </p>
+                    <div className="space-y-1">
+                      {[...priceRates].sort((a, b) => a.min_value - b.min_value).map((rate) => (
+                        <div
+                          key={`price-${rate.min_value}`}
+                          className="flex items-center justify-between text-xs py-1 px-2 rounded transition-colors hover:bg-white/[0.02]"
+                        >
+                          <span className="text-gray-400">
+                            {rate.min_value} - {rate.max_value >= 999999 ? '+' : rate.max_value} TL
+                          </span>
+                          <span className={cn(
+                            'font-medium tabular-nums',
+                            rate.cost === 0 ? 'text-success-400' : 'text-gray-300'
+                          )}>
+                            {rate.cost === 0 ? 'Ucretsiz' : `${rate.cost.toLocaleString('tr-TR')} TL`}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </Card>
+            )}
           </div>
 
           <div className="lg:col-span-3 space-y-4">
@@ -146,7 +261,11 @@ export function CalculatorPage() {
                       <CostRow label="Alis Maliyeti" value={result.buyPrice} negative />
                       <CostRow label="KDV" value={result.vat} negative />
                       <CostRow label="Komisyon" value={result.commission} negative />
-                      <CostRow label="Kargo (Desi)" value={result.shippingCost} negative />
+                      <CostRow
+                        label={`Kargo${manualShipping ? ' (Manuel)' : ' (Barem)'}`}
+                        value={result.shippingCost}
+                        negative
+                      />
                       {result.extraCost > 0 && <CostRow label="Ek Giderler" value={result.extraCost} negative />}
                       {result.adCost > 0 && <CostRow label="Reklam" value={result.adCost} negative />}
                     </div>

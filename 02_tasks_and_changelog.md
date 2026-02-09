@@ -7,9 +7,9 @@ This is the **LIVING STATE** of the project.
 ---
 
 # 1. 🚦 Project Status Board
-**Current Phase:** Phase 4 (AI & Optimization)
-**Active Task:** None (Phase 4 Complete)
-**Last Completed:** Task 4.3 (Final Polish)
+**Current Phase:** Phase 5 (Hesaplama Tutarliligi & Dinamik Kargo Barem)
+**Active Task:** None (Phase 5 Complete)
+**Last Completed:** Task 5.2 (Dinamik Kargo Barem Sistemi)
 
 ---
 
@@ -208,10 +208,112 @@ This is the **LIVING STATE** of the project.
 
 ---
 
+## Phase 5: Hesaplama Tutarliligi & Dinamik Kargo Barem Sistemi
+**Goal:** Centralize the financial calculation logic and implement a dynamic, database-driven shipping rate (barem) system.
+
+### [x] Task 5.1: Hesaplama Tutarliligi (Calculation Consistency)
+- **Objective:** Ensure "Kar Hesapla" and "Urunler" pages use the exact same calculation logic with identical inputs.
+- **Changelog:**
+
+  #### Root Cause Analysis
+  - **[2026-02-09]** Identified that `CalculatorPage` was standalone (no store context), using hardcoded desi rates only, while `useProducts` used the same `calculateProfit()` but with store-aware shipping cost resolution.
+  - **[2026-02-09]** Both modules already shared `financial-engine.ts`, but Calculator lacked access to dynamic barem data and store marketplace context.
+
+  #### Financial Engine Refactor
+  - **[2026-02-09]** Exported `ProfitInput` interface from `financial-engine.ts` for external consumption.
+  - **[2026-02-09]** Added `ShippingRate` interface: `{ rate_type: 'desi' | 'price', min_value, max_value, cost, vat_included }`.
+  - **[2026-02-09]** Created `resolveShippingCost(desi, salesPrice, rates)` — hybrid resolver that checks desi-based rates first, then price-based, with fallback to hardcoded defaults.
+  - **[2026-02-09]** Created `findMatchingRate(rates, value)` — generic range matcher supporting any sorted rate table.
+  - **[2026-02-09]** Maintained `FALLBACK_DESI_RATES` as safety net when DB rates are unavailable.
+  - **[2026-02-09]** `getDesiShippingCost()` now accepts optional `ShippingRate[]` parameter for dynamic rates.
+  - **[2026-02-09]** `calculateProfit()` remains unchanged — single source of truth for all profit calculations.
+
+  #### Calculator Page Fix
+  - **[2026-02-09]** Connected `CalculatorPage` to store context via new props: `shippingRates` and `marketplace`.
+  - **[2026-02-09]** Calculator now uses `resolveShippingCost()` with the same dynamic rates as Products page.
+  - **[2026-02-09]** Added real-time shipping cost preview showing barem-resolved amount before calculation.
+  - **[2026-02-09]** Added "Manuel Kargo" override field — empty = automatic barem, filled = manual override.
+  - **[2026-02-09]** Added marketplace badge showing active marketplace (Trendyol/Hepsiburada/Amazon TR).
+  - **[2026-02-09]** Added inline "Kargo Barem Tablosu" card showing both Desi and Price-based rate tiers.
+  - **[2026-02-09]** Result now shows "(Barem)" or "(Manuel)" label on shipping cost row.
+
+  #### useProducts Hook Update
+  - **[2026-02-09]** `useProducts(storeId, shippingRates)` now accepts `ShippingRate[]` as second parameter.
+  - **[2026-02-09]** `computeProfit()` uses `resolveShippingCost()` when `shipping_cost === 0` (automatic), or manual override when > 0.
+  - **[2026-02-09]** Added reactive recalculation: when `shippingRates` change, all product profits are recalculated automatically.
+
+### [x] Task 5.2: Dinamik Kargo Barem Sistemi (Dynamic Shipping Rate System)
+- **Objective:** Replace hardcoded shipping rates with a database-driven, user-customizable barem table.
+- **Changelog:**
+
+  #### Database Layer
+  - **[2026-02-09]** Created `shipping_rates` table with 11 columns:
+    - `id` (uuid PK), `store_id` (nullable FK → stores), `marketplace` (text), `rate_type` ('desi' | 'price'), `min_value` (numeric), `max_value` (numeric), `cost` (numeric), `vat_included` (boolean), `is_active` (boolean), `created_at`, `updated_at`
+  - **[2026-02-09]** Design: `store_id IS NULL` = system defaults, `store_id IS NOT NULL` = user overrides.
+  - **[2026-02-09]** Unique constraint on `(store_id, marketplace, rate_type, min_value)` using `NULLS NOT DISTINCT`.
+  - **[2026-02-09]** 3 indexes: store_id, marketplace, and composite lookup index.
+  - **[2026-02-09]** Enabled RLS with 5 restrictive policies:
+    - Authenticated users can read system defaults (store_id IS NULL)
+    - Users can read/insert/update/delete only their own store's rates
+    - INSERT policy enforces store_id IS NOT NULL (users cannot create system defaults)
+
+  #### Default Data Seeding
+  - **[2026-02-09]** Seeded 36 default shipping rate rows (3 marketplaces x 12 tiers each):
+    - **Trendyol**: 8 desi tiers (0-1: 9.99 TL through 20-30: 59.99 TL) + 4 price tiers (0-50: 14.99 TL, 50-100: 11.99 TL, 100-150: 8.99 TL, 150+: Free)
+    - **Hepsiburada**: 8 desi tiers (0-1: 10.99 TL through 20-30: 62.99 TL) + 4 price tiers (0-50: 15.99 TL, 50-100: 12.99 TL, 100-150: 9.99 TL, 150+: Free)
+    - **Amazon TR**: 8 desi tiers (0-1: 11.99 TL through 20-30: 64.99 TL) + 4 price tiers (0-50: 16.99 TL, 50-100: 13.99 TL, 100-200: 9.99 TL, 200+: Free)
+  - **[2026-02-09]** All costs stored as KDV-included (Turkish marketplace standard).
+  - **[2026-02-09]** Used `ON CONFLICT DO NOTHING` for idempotent seeding.
+
+  #### Hook: `useShippingRates`
+  - **[2026-02-09]** Created `src/hooks/useShippingRates.ts` (~130 lines):
+    - Fetches both system defaults and store-specific overrides in parallel
+    - `mergeRates()` — intelligent merge: store overrides replace matching system defaults by `(rate_type, min_value)` key
+    - `upsertRate()` — creates or updates a store-specific rate with `ON CONFLICT` upsert
+    - `deleteStoreRate()` — removes a single store override
+    - `resetToDefaults()` — bulk deletes all store overrides for the marketplace
+    - `hasCustomRates` — boolean flag indicating whether user has any custom rates
+    - Auto-refetches after every mutation
+
+  #### UI: ShippingBaremSettings Component
+  - **[2026-02-09]** Created `src/components/settings/ShippingBaremSettings.tsx` (~300 lines):
+    - Displays Desi-based and Price-based rate tables side by side
+    - Inline editing: click any row to edit max_value and cost
+    - "Kademe Ekle" form: add new rate tier with type, min, max, cost fields
+    - "Varsayilana Don" button: resets all custom rates to system defaults
+    - "Ozel" badge when user has custom rates
+    - Marketplace label in card header
+
+  #### App Integration
+  - **[2026-02-09]** `App.tsx` now initializes `useShippingRates(store.id, store.marketplace)` at top level.
+  - **[2026-02-09]** Shipping rates passed down to `useProducts`, `CalculatorPage`, and `SettingsPage`.
+  - **[2026-02-09]** Combined loading state: `isLoading = productsLoading || ratesLoading`.
+
+  #### TypeScript Types
+  - **[2026-02-09]** Added `shipping_rates` to `Database['public']['Tables']` in `src/types/database.ts` with full Row/Insert/Update types.
+
+  #### Build Verification
+  - **[2026-02-09]** Production build: **0 TypeScript errors**, 931.31 KB JS (gzip: 270.34 KB), 42.79 KB CSS (gzip: 7.56 KB).
+
+  #### File Change Matrix
+  | File | Action | Change Summary |
+  | :--- | :--- | :--- |
+  | `supabase/migrations/..._create_shipping_rates_table.sql` | NEW (migration) | 95 lines |
+  | `supabase/migrations/..._seed_default_shipping_rates.sql` | NEW (migration) | 80 lines |
+  | `src/lib/financial-engine.ts` | REFACTORED | +ShippingRate, +resolveShippingCost, +findMatchingRate, +FALLBACK_DESI_RATES |
+  | `src/hooks/useShippingRates.ts` | NEW | ~130 lines |
+  | `src/hooks/useProducts.ts` | UPDATED | +shippingRates param, +resolveShippingCost, +reactive recalc |
+  | `src/pages/CalculatorPage.tsx` | REWRITTEN | +shippingRates/marketplace props, +barem preview, +manual override |
+  | `src/pages/SettingsPage.tsx` | UPDATED | +ShippingBaremSettings, +storeId/marketplace props |
+  | `src/components/settings/ShippingBaremSettings.tsx` | NEW | ~300 lines |
+  | `src/types/database.ts` | UPDATED | +shipping_rates types |
+  | `src/App.tsx` | UPDATED | +useShippingRates, +rates wiring |
+
+---
+
 # 3. 📉 Technical Debt & Known Issues
 *> Use this section to log "Todo" items or hacks that need refactoring later.*
 
 | ID | Severity | Description | Proposed Fix |
 | :--- | :--- | :--- | :--- |
-| **TD-002** | Medium | Using Bolt DB (Prototype) | Plan migration to PostgreSQL for Production |
 | **TD-004** | Low | Hardcoded Category Colors | Move palette to global config theme |

@@ -1,6 +1,14 @@
 import type { ProfitResult } from '@/types'
 
-interface ProfitInput {
+export interface ShippingRate {
+  rate_type: 'desi' | 'price'
+  min_value: number
+  max_value: number
+  cost: number
+  vat_included: boolean
+}
+
+export interface ProfitInput {
   salesPrice: number
   buyPrice: number
   commissionRate: number
@@ -11,26 +19,64 @@ interface ProfitInput {
   adCost: number
 }
 
-const DESI_RATES: Record<string, number> = {
-  '0-1': 9.99,
-  '1-2': 11.99,
-  '2-3': 13.99,
-  '3-5': 17.99,
-  '5-10': 24.99,
-  '10-15': 34.99,
-  '15-20': 44.99,
-  '20-30': 59.99,
+const FALLBACK_DESI_RATES: ShippingRate[] = [
+  { rate_type: 'desi', min_value: 0, max_value: 1, cost: 9.99, vat_included: true },
+  { rate_type: 'desi', min_value: 1, max_value: 2, cost: 11.99, vat_included: true },
+  { rate_type: 'desi', min_value: 2, max_value: 3, cost: 13.99, vat_included: true },
+  { rate_type: 'desi', min_value: 3, max_value: 5, cost: 17.99, vat_included: true },
+  { rate_type: 'desi', min_value: 5, max_value: 10, cost: 24.99, vat_included: true },
+  { rate_type: 'desi', min_value: 10, max_value: 15, cost: 34.99, vat_included: true },
+  { rate_type: 'desi', min_value: 15, max_value: 20, cost: 44.99, vat_included: true },
+  { rate_type: 'desi', min_value: 20, max_value: 30, cost: 59.99, vat_included: true },
+]
+
+export function resolveShippingCost(
+  desi: number,
+  salesPrice: number,
+  rates: ShippingRate[],
+): number {
+  const desiRates = rates.filter((r) => r.rate_type === 'desi')
+  const priceRates = rates.filter((r) => r.rate_type === 'price')
+
+  const desiMatch = findMatchingRate(desiRates, desi)
+  const priceMatch = findMatchingRate(priceRates, salesPrice)
+
+  if (desiMatch !== null && priceMatch !== null) {
+    return desiMatch
+  }
+
+  if (desiMatch !== null) return desiMatch
+  if (priceMatch !== null) return priceMatch
+
+  const fallbackMatch = findMatchingRate(FALLBACK_DESI_RATES, desi)
+  return fallbackMatch ?? 9.99
 }
 
-export function getDesiShippingCost(desi: number): number {
-  if (desi <= 1) return DESI_RATES['0-1']
-  if (desi <= 2) return DESI_RATES['1-2']
-  if (desi <= 3) return DESI_RATES['2-3']
-  if (desi <= 5) return DESI_RATES['3-5']
-  if (desi <= 10) return DESI_RATES['5-10']
-  if (desi <= 15) return DESI_RATES['10-15']
-  if (desi <= 20) return DESI_RATES['15-20']
-  return DESI_RATES['20-30']
+function findMatchingRate(rates: ShippingRate[], value: number): number | null {
+  if (rates.length === 0) return null
+
+  const sorted = [...rates].sort((a, b) => a.min_value - b.min_value)
+  for (const rate of sorted) {
+    if (value >= rate.min_value && value < rate.max_value) {
+      return rate.cost
+    }
+  }
+
+  const last = sorted[sorted.length - 1]
+  if (value >= last.min_value) {
+    return last.cost
+  }
+
+  return null
+}
+
+export function getDesiShippingCost(desi: number, rates?: ShippingRate[]): number {
+  const desiRates = rates
+    ? rates.filter((r) => r.rate_type === 'desi')
+    : FALLBACK_DESI_RATES
+
+  const match = findMatchingRate(desiRates.length > 0 ? desiRates : FALLBACK_DESI_RATES, desi)
+  return match ?? 9.99
 }
 
 export function calculateProfit(input: ProfitInput): ProfitResult {
@@ -61,7 +107,7 @@ export function calculateProfit(input: ProfitInput): ProfitResult {
 
 export function simulatePriceChange(
   currentInput: ProfitInput,
-  newSalesPrice: number
+  newSalesPrice: number,
 ): { current: ProfitResult; simulated: ProfitResult; profitDelta: number; marginDelta: number } {
   const current = calculateProfit(currentInput)
   const simulated = calculateProfit({ ...currentInput, salesPrice: newSalesPrice })

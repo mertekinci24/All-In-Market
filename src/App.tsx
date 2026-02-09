@@ -4,6 +4,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { useStore } from '@/hooks/useStore'
 import { useProducts } from '@/hooks/useProducts'
 import { useCurrency } from '@/hooks/useCurrency'
+import { useShippingRates } from '@/hooks/useShippingRates'
 import { AppLayout } from '@/components/layout/AppLayout'
 import { StoreSetup } from '@/components/layout/StoreSetup'
 import { AuthPage } from '@/pages/AuthPage'
@@ -18,8 +19,9 @@ import { SettingsPage } from '@/pages/SettingsPage'
 export default function App() {
   const { user, loading: authLoading, signIn, signUp, signOut } = useAuth()
   const { store, loading: storeLoading, createStore } = useStore(user?.id)
+  const { rates: shippingRates, loading: ratesLoading } = useShippingRates(store?.id, store?.marketplace ?? 'trendyol')
   const { products, loading: productsLoading, addProduct, updateProduct, deleteProduct, refetch } =
-    useProducts(store?.id)
+    useProducts(store?.id, shippingRates)
   const { rates: currencyRates } = useCurrency()
 
   if (authLoading || (user && storeLoading)) {
@@ -43,20 +45,22 @@ export default function App() {
     return <StoreSetup onCreateStore={createStore} />
   }
 
+  const isLoading = productsLoading || ratesLoading
+
   return (
     <BrowserRouter>
       <Routes>
         <Route element={<AppLayout onSignOut={signOut} />}>
           <Route
             path="/"
-            element={<DashboardPage products={products} loading={productsLoading} currencyRates={currencyRates} />}
+            element={<DashboardPage products={products} loading={isLoading} currencyRates={currencyRates} />}
           />
           <Route
             path="/products"
             element={
               <ProductsPage
                 products={products}
-                loading={productsLoading}
+                loading={isLoading}
                 storeId={store.id}
                 onAdd={addProduct}
                 onUpdate={updateProduct}
@@ -65,20 +69,38 @@ export default function App() {
               />
             }
           />
-          <Route path="/calculator" element={<CalculatorPage />} />
+          <Route
+            path="/calculator"
+            element={
+              <CalculatorPage
+                shippingRates={shippingRates}
+                marketplace={store.marketplace}
+              />
+            }
+          />
           <Route
             path="/analytics"
-            element={<AnalyticsPage products={products} loading={productsLoading} />}
+            element={<AnalyticsPage products={products} loading={isLoading} />}
           />
           <Route
             path="/tracking"
-            element={<TrackingPage products={products} loading={productsLoading} />}
+            element={<TrackingPage products={products} loading={isLoading} />}
           />
           <Route
             path="/ai-scenario"
-            element={<AiScenarioPage products={products} loading={productsLoading} />}
+            element={<AiScenarioPage products={products} loading={isLoading} />}
           />
-          <Route path="/settings" element={<SettingsPage store={store} />} />
+          <Route
+            path="/settings"
+            element={
+              <SettingsPage
+                store={store}
+                shippingRates={shippingRates}
+                storeId={store.id}
+                marketplace={store.marketplace}
+              />
+            }
+          />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       </Routes>

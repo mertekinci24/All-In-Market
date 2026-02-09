@@ -146,6 +146,56 @@ export type Database = {
           }
         ]
       }
+      shipping_rates: {
+        Row: {
+          id: string
+          store_id: string | null
+          marketplace: string
+          rate_type: string
+          min_value: number
+          max_value: number
+          cost: number
+          vat_included: boolean
+          is_active: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          store_id?: string | null
+          marketplace?: string
+          rate_type?: string
+          min_value?: number
+          max_value?: number
+          cost?: number
+          vat_included?: boolean
+          is_active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          store_id?: string | null
+          marketplace?: string
+          rate_type?: string
+          min_value?: number
+          max_value?: number
+          cost?: number
+          vat_included?: boolean
+          is_active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shipping_rates_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "stores"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       notification_settings: {
         Row: {
           id: string
