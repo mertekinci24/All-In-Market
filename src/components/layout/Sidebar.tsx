@@ -3,6 +3,7 @@ import { Link, useLocation } from 'react-router-dom'
 import {
   LayoutDashboard,
   Package,
+  ShoppingCart,
   Calculator,
   TrendingUp,
   Settings,
@@ -16,6 +17,7 @@ import { cn } from '@/lib/utils'
 const navItems = [
   { label: 'Dashboard', href: '/', icon: LayoutDashboard },
   { label: 'Urunler', href: '/products', icon: Package },
+  { label: 'Siparisler', href: '/orders', icon: ShoppingCart },
   { label: 'Kar Hesapla', href: '/calculator', icon: Calculator },
   { label: 'Analiz', href: '/analytics', icon: BarChart3 },
   { label: 'Fiyat Takibi', href: '/tracking', icon: TrendingUp },

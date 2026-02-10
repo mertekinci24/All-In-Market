@@ -3,6 +3,7 @@ import { TrendingUp } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { useStore } from '@/hooks/useStore'
 import { useProducts } from '@/hooks/useProducts'
+import { useOrders } from '@/hooks/useOrders'
 import { useCurrency } from '@/hooks/useCurrency'
 import { useShippingRates } from '@/hooks/useShippingRates'
 import { AppLayout } from '@/components/layout/AppLayout'
@@ -10,6 +11,7 @@ import { StoreSetup } from '@/components/layout/StoreSetup'
 import { AuthPage } from '@/pages/AuthPage'
 import { DashboardPage } from '@/pages/DashboardPage'
 import { ProductsPage } from '@/pages/ProductsPage'
+import { OrdersPage } from '@/pages/OrdersPage'
 import { CalculatorPage } from '@/pages/CalculatorPage'
 import { AnalyticsPage } from '@/pages/AnalyticsPage'
 import { TrackingPage } from '@/pages/TrackingPage'
@@ -22,6 +24,8 @@ export default function App() {
   const { rates: shippingRates, loading: ratesLoading } = useShippingRates(store?.id, store?.marketplace ?? 'trendyol')
   const { products, loading: productsLoading, addProduct, updateProduct, deleteProduct, refetch } =
     useProducts(store?.id, shippingRates)
+  const { orders, loading: ordersLoading, addOrder, updateOrder, deleteOrder } =
+    useOrders(store?.id)
   const { rates: currencyRates } = useCurrency()
 
   if (authLoading || (user && storeLoading)) {
@@ -66,6 +70,20 @@ export default function App() {
                 onUpdate={updateProduct}
                 onDelete={deleteProduct}
                 onRefetch={refetch}
+              />
+            }
+          />
+          <Route
+            path="/orders"
+            element={
+              <OrdersPage
+                orders={orders}
+                loading={isLoading || ordersLoading}
+                products={products}
+                shippingRates={shippingRates}
+                onAdd={addOrder}
+                onUpdate={updateOrder}
+                onDelete={deleteOrder}
               />
             }
           />
