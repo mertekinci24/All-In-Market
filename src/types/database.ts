@@ -196,6 +196,137 @@ export type Database = {
           }
         ]
       }
+      orders: {
+        Row: {
+          id: string
+          store_id: string
+          order_number: string
+          marketplace_order_id: string
+          order_date: string
+          total_amount: number
+          total_shipping: number
+          total_commission: number
+          total_profit: number
+          campaign_name: string
+          campaign_seller_share: number
+          campaign_marketplace_share: number
+          status: string
+          notes: string
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          store_id: string
+          order_number?: string
+          marketplace_order_id?: string
+          order_date?: string
+          total_amount?: number
+          total_shipping?: number
+          total_commission?: number
+          total_profit?: number
+          campaign_name?: string
+          campaign_seller_share?: number
+          campaign_marketplace_share?: number
+          status?: string
+          notes?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          store_id?: string
+          order_number?: string
+          marketplace_order_id?: string
+          order_date?: string
+          total_amount?: number
+          total_shipping?: number
+          total_commission?: number
+          total_profit?: number
+          campaign_name?: string
+          campaign_seller_share?: number
+          campaign_marketplace_share?: number
+          status?: string
+          notes?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "orders_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "stores"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      order_items: {
+        Row: {
+          id: string
+          order_id: string
+          product_id: string | null
+          product_name: string
+          quantity: number
+          unit_price: number
+          buy_price_at_sale: number
+          commission_rate_at_sale: number
+          vat_rate_at_sale: number
+          shipping_share: number
+          extra_cost: number
+          ad_cost: number
+          net_profit: number
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          order_id: string
+          product_id?: string | null
+          product_name?: string
+          quantity?: number
+          unit_price?: number
+          buy_price_at_sale?: number
+          commission_rate_at_sale?: number
+          vat_rate_at_sale?: number
+          shipping_share?: number
+          extra_cost?: number
+          ad_cost?: number
+          net_profit?: number
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          order_id?: string
+          product_id?: string | null
+          product_name?: string
+          quantity?: number
+          unit_price?: number
+          buy_price_at_sale?: number
+          commission_rate_at_sale?: number
+          vat_rate_at_sale?: number
+          shipping_share?: number
+          extra_cost?: number
+          ad_cost?: number
+          net_profit?: number
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "order_items_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_items_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       notification_settings: {
         Row: {
           id: string
