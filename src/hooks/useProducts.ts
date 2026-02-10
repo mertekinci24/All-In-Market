@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
-import { calculateProfit, resolveShippingCost } from '@/lib/financial-engine'
-import type { ShippingRate } from '@/lib/financial-engine'
+import { calculateProfit, resolveShippingCost, resolveCommissionRate } from '@/lib/financial-engine'
+import type { ShippingRate, CommissionSchedule, CommissionResolution } from '@/lib/financial-engine'
 import type { Database } from '@/types/database'
 import type { ProfitResult } from '@/types'
 
@@ -11,38 +11,58 @@ type ProductUpdate = Database['public']['Tables']['products']['Update']
 
 export interface ProductWithProfit extends ProductRow {
   profit: ProfitResult
+  commissionResolution: CommissionResolution
 }
 
-function computeProfit(p: ProductRow, shippingRates: ShippingRate[]): ProfitResult {
+function computeProfit(
+  p: ProductRow,
+  shippingRates: ShippingRate[],
+  commissionSchedules: CommissionSchedule[],
+  marketplace: string,
+): { profit: ProfitResult; commissionResolution: CommissionResolution } {
   const salesPrice = p.sales_price ?? 0
   const shippingCost = p.shipping_cost > 0
     ? p.shipping_cost
     : resolveShippingCost(p.desi, salesPrice, shippingRates)
 
-  return calculateProfit({
+  const commissionResolution = resolveCommissionRate(
+    p.id,
+    marketplace,
+    commissionSchedules,
+    p.commission_rate
+  )
+
+  const profit = calculateProfit({
     salesPrice,
     buyPrice: p.buy_price,
-    commissionRate: p.commission_rate,
+    commissionRate: commissionResolution.rate,
     vatRate: p.vat_rate,
     desi: p.desi,
     shippingCost,
     extraCost: p.extra_cost,
     adCost: p.ad_cost,
   })
+
+  return { profit, commissionResolution }
 }
 
 const PRODUCT_COLUMNS = 'id, store_id, external_id, name, buy_price, sales_price, competitor_price, commission_rate, vat_rate, desi, shipping_cost, extra_cost, ad_cost, stock_status, image_url, category, marketplace_url, last_scraped, created_at, updated_at'
 
-export function useProducts(storeId: string | undefined, shippingRates: ShippingRate[] = []) {
+export function useProducts(
+  storeId: string | undefined,
+  shippingRates: ShippingRate[] = [],
+  commissionSchedules: CommissionSchedule[] = [],
+  marketplace: string = 'Trendyol',
+) {
   const [products, setProducts] = useState<ProductWithProfit[]>([])
   const [loading, setLoading] = useState(true)
 
   const enrichProducts = useCallback((rows: ProductRow[]) => {
-    return rows.map((p) => ({
-      ...p,
-      profit: computeProfit(p, shippingRates),
-    }))
-  }, [shippingRates])
+    return rows.map((p) => {
+      const { profit, commissionResolution } = computeProfit(p, shippingRates, commissionSchedules, marketplace)
+      return { ...p, profit, commissionResolution }
+    })
+  }, [shippingRates, commissionSchedules, marketplace])
 
   const fetchProducts = useCallback(async () => {
     if (!storeId) {
@@ -67,13 +87,13 @@ export function useProducts(storeId: string | undefined, shippingRates: Shipping
   }, [fetchProducts])
 
   useEffect(() => {
-    if (products.length > 0 && shippingRates.length > 0) {
-      setProducts((prev) => prev.map((p) => ({
-        ...p,
-        profit: computeProfit(p, shippingRates),
-      })))
+    if (products.length > 0 && (shippingRates.length > 0 || commissionSchedules.length >= 0)) {
+      setProducts((prev) => prev.map((p) => {
+        const { profit, commissionResolution } = computeProfit(p, shippingRates, commissionSchedules, marketplace)
+        return { ...p, profit, commissionResolution }
+      }))
     }
-  }, [shippingRates])
+  }, [shippingRates, commissionSchedules, marketplace])
 
   const addProduct = async (product: Omit<ProductInsert, 'store_id'>) => {
     if (!storeId) return null
@@ -85,7 +105,8 @@ export function useProducts(storeId: string | undefined, shippingRates: Shipping
       .maybeSingle()
     if (error || !data) return null
     const row = data as ProductRow
-    const enriched: ProductWithProfit = { ...row, profit: computeProfit(row, shippingRates) }
+    const { profit, commissionResolution } = computeProfit(row, shippingRates, commissionSchedules, marketplace)
+    const enriched: ProductWithProfit = { ...row, profit, commissionResolution }
     setProducts((prev) => [enriched, ...prev])
     return enriched
   }
@@ -100,7 +121,8 @@ export function useProducts(storeId: string | undefined, shippingRates: Shipping
       .maybeSingle()
     if (error || !data) return null
     const row = data as ProductRow
-    const enriched: ProductWithProfit = { ...row, profit: computeProfit(row, shippingRates) }
+    const { profit, commissionResolution } = computeProfit(row, shippingRates, commissionSchedules, marketplace)
+    const enriched: ProductWithProfit = { ...row, profit, commissionResolution }
     setProducts((prev) => prev.map((p) => (p.id === id ? enriched : p)))
     return enriched
   }

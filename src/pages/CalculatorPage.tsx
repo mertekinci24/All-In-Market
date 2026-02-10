@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
 import { calculateProfit, resolveShippingCost } from '@/lib/financial-engine'
-import type { ShippingRate } from '@/lib/financial-engine'
+import type { ShippingRate, CommissionSchedule } from '@/lib/financial-engine'
 import { cn } from '@/lib/utils'
 import type { ProfitResult } from '@/types'
 
@@ -14,14 +14,18 @@ const MARKETPLACE_LABELS: Record<string, string> = {
   trendyol: 'Trendyol',
   hepsiburada: 'Hepsiburada',
   amazon_tr: 'Amazon TR',
+  Trendyol: 'Trendyol',
+  Hepsiburada: 'Hepsiburada',
+  'Amazon TR': 'Amazon TR',
 }
 
 interface CalculatorPageProps {
   shippingRates: ShippingRate[]
+  commissionSchedules: CommissionSchedule[]
   marketplace: string
 }
 
-export function CalculatorPage({ shippingRates, marketplace }: CalculatorPageProps) {
+export function CalculatorPage({ shippingRates, commissionSchedules, marketplace }: CalculatorPageProps) {
   const [salesPrice, setSalesPrice] = useState('')
   const [buyPrice, setBuyPrice] = useState('')
   const [commissionRate, setCommissionRate] = useState('15')
@@ -31,6 +35,16 @@ export function CalculatorPage({ shippingRates, marketplace }: CalculatorPagePro
   const [adCost, setAdCost] = useState('0')
   const [manualShipping, setManualShipping] = useState('')
   const [result, setResult] = useState<ProfitResult | null>(null)
+
+  const activeStoreWideCampaign = useMemo(() => {
+    const now = new Date()
+    return commissionSchedules.find((s) => {
+      if (!s.is_active || s.product_id !== null) return false
+      const from = new Date(s.valid_from)
+      const until = new Date(s.valid_until)
+      return now >= from && now < until && s.marketplace === marketplace
+    })
+  }, [commissionSchedules, marketplace])
 
   const resolvedShipping = useMemo(() => {
     const desiVal = parseFloat(desi) || 1
@@ -89,13 +103,25 @@ export function CalculatorPage({ shippingRates, marketplace }: CalculatorPagePro
                   onChange={(e) => setBuyPrice(e.target.value)}
                 />
                 <div className="grid grid-cols-2 gap-3">
-                  <Input
-                    label="Komisyon (%)"
-                    type="number"
-                    placeholder="15"
-                    value={commissionRate}
-                    onChange={(e) => setCommissionRate(e.target.value)}
-                  />
+                  <div>
+                    <Input
+                      label="Komisyon (%)"
+                      type="number"
+                      placeholder="15"
+                      value={commissionRate}
+                      onChange={(e) => setCommissionRate(e.target.value)}
+                    />
+                    {activeStoreWideCampaign && (
+                      <div className="mt-1.5 flex items-center gap-1.5">
+                        <Badge variant="success" className="text-[10px]">
+                          Kampanya
+                        </Badge>
+                        <span className="text-[10px] text-gray-500 truncate">
+                          {activeStoreWideCampaign.campaign_name || 'Aktif'} (%{Math.round(activeStoreWideCampaign.campaign_rate * 100)})
+                        </span>
+                      </div>
+                    )}
+                  </div>
                   <Input
                     label="KDV (%)"
                     type="number"

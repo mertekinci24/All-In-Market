@@ -8,6 +8,29 @@ export interface ShippingRate {
   vat_included: boolean
 }
 
+export interface CommissionSchedule {
+  id: string
+  store_id: string
+  product_id: string | null
+  marketplace: string
+  normal_rate: number
+  campaign_rate: number
+  campaign_name: string
+  valid_from: string
+  valid_until: string
+  seller_discount_share: number
+  marketplace_discount_share: number
+  is_active: boolean
+}
+
+export interface CommissionResolution {
+  rate: number
+  campaignName: string | null
+  isCampaignActive: boolean
+  sellerDiscountShare: number
+  marketplaceDiscountShare: number
+}
+
 export interface ProfitInput {
   salesPrice: number
   buyPrice: number
@@ -116,5 +139,50 @@ export function simulatePriceChange(
     simulated,
     profitDelta: simulated.netProfit - current.netProfit,
     marginDelta: simulated.margin - current.margin,
+  }
+}
+
+export function resolveCommissionRate(
+  productId: string | null,
+  marketplace: string,
+  schedules: CommissionSchedule[],
+  fallbackRate: number,
+  now: Date = new Date(),
+): CommissionResolution {
+  const activeSchedules = schedules.filter((s) => {
+    if (!s.is_active) return false
+    const from = new Date(s.valid_from)
+    const until = new Date(s.valid_until)
+    return now >= from && now < until && s.marketplace === marketplace
+  })
+
+  const productSpecific = activeSchedules.find((s) => s.product_id === productId)
+  if (productSpecific) {
+    return {
+      rate: productSpecific.campaign_rate,
+      campaignName: productSpecific.campaign_name || null,
+      isCampaignActive: true,
+      sellerDiscountShare: productSpecific.seller_discount_share,
+      marketplaceDiscountShare: productSpecific.marketplace_discount_share,
+    }
+  }
+
+  const storeWide = activeSchedules.find((s) => s.product_id === null)
+  if (storeWide) {
+    return {
+      rate: storeWide.campaign_rate,
+      campaignName: storeWide.campaign_name || null,
+      isCampaignActive: true,
+      sellerDiscountShare: storeWide.seller_discount_share,
+      marketplaceDiscountShare: storeWide.marketplace_discount_share,
+    }
+  }
+
+  return {
+    rate: fallbackRate,
+    campaignName: null,
+    isCampaignActive: false,
+    sellerDiscountShare: 1,
+    marketplaceDiscountShare: 0,
   }
 }

@@ -6,6 +6,7 @@ import { useProducts } from '@/hooks/useProducts'
 import { useOrders } from '@/hooks/useOrders'
 import { useCurrency } from '@/hooks/useCurrency'
 import { useShippingRates } from '@/hooks/useShippingRates'
+import { useCommissionSchedules } from '@/hooks/useCommissionSchedules'
 import { AppLayout } from '@/components/layout/AppLayout'
 import { StoreSetup } from '@/components/layout/StoreSetup'
 import { AuthPage } from '@/pages/AuthPage'
@@ -21,9 +22,10 @@ import { SettingsPage } from '@/pages/SettingsPage'
 export default function App() {
   const { user, loading: authLoading, signIn, signUp, signOut } = useAuth()
   const { store, loading: storeLoading, createStore } = useStore(user?.id)
-  const { rates: shippingRates, loading: ratesLoading } = useShippingRates(store?.id, store?.marketplace ?? 'trendyol')
+  const { rates: shippingRates, loading: ratesLoading } = useShippingRates(store?.id, store?.marketplace ?? 'Trendyol')
+  const { schedules: commissionSchedules, loading: schedulesLoading } = useCommissionSchedules(store?.id, store?.marketplace ?? 'Trendyol')
   const { products, loading: productsLoading, addProduct, updateProduct, deleteProduct, refetch } =
-    useProducts(store?.id, shippingRates)
+    useProducts(store?.id, shippingRates, commissionSchedules, store?.marketplace ?? 'Trendyol')
   const { orders, loading: ordersLoading, addOrder, updateOrder, deleteOrder } =
     useOrders(store?.id)
   const { rates: currencyRates } = useCurrency()
@@ -49,7 +51,7 @@ export default function App() {
     return <StoreSetup onCreateStore={createStore} />
   }
 
-  const isLoading = productsLoading || ratesLoading
+  const isLoading = productsLoading || ratesLoading || schedulesLoading
 
   return (
     <BrowserRouter>
@@ -92,6 +94,7 @@ export default function App() {
             element={
               <CalculatorPage
                 shippingRates={shippingRates}
+                commissionSchedules={commissionSchedules}
                 marketplace={store.marketplace}
               />
             }

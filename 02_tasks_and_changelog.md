@@ -8,8 +8,8 @@ This is the **LIVING STATE** of the project.
 
 # 1. 🚦 Project Status Board
 **Current Phase:** Phase 6 (Operasyonel Derinlik & Kampanya Yonetimi)
-**Active Task:** Task 6.3 Logic Layer (Financial Engine Integration)
-**Last Completed:** Task 6.3 Database Layer (Commission Schedules Table — DONE ✅)
+**Active Task:** Task 6.4 (Kampanya Komisyon UI)
+**Last Completed:** Task 6.3 (Zaman Ayarli Komisyon Sistemi — Database + Logic Layer ✅)
 
 ---
 
@@ -615,18 +615,95 @@ This is the **LIVING STATE** of the project.
 - **[2026-02-10]** **Discount Share Split:** `seller_discount_share + marketplace_discount_share` should sum to ≤ 1.0 (validated at application level)
 - **[2026-02-10]** **Idempotent Migration:** Uses `CREATE TABLE IF NOT EXISTS` and `DO $$ BEGIN ... END $$` blocks for safe re-runs
 
-#### File Change Matrix
+#### File Change Matrix (Database Layer)
 | File | Action | Lines |
 | :--- | :--- | :--- |
 | `supabase/migrations/20260210120000_create_commission_schedules_table.sql` | NEW (migration) | ~155 |
 | `src/types/database.ts` | UPDATED | +66 |
 | **TOTAL** | | **~221** |
 
-**Next Steps:**
-- [ ] `src/hooks/useCommissionSchedules.ts` — CRUD hook with JIT resolver
-- [ ] FinanceEngine update: `resolveCommissionRate()` function
-- [ ] `useProducts` integration: campaign-aware commission calculation
-- [ ] UI components for campaign management (Task 6.4)
+---
+
+#### Logic Layer: Financial Engine Integration
+- **[2026-02-10]** Added `CommissionSchedule` interface to `financial-engine.ts`:
+  - 12 fields matching database schema (id, store_id, product_id, marketplace, rates, campaign_name, date range, discount shares, is_active)
+- **[2026-02-10]** Added `CommissionResolution` interface:
+  - `rate` (number) — Resolved commission rate to use in calculations
+  - `campaignName` (string | null) — Active campaign name if any
+  - `isCampaignActive` (boolean) — Whether a campaign is currently active
+  - `sellerDiscountShare` / `marketplaceDiscountShare` — Discount split values
+- **[2026-02-10]** Created `resolveCommissionRate()` JIT resolver function:
+  - **Signature:** `resolveCommissionRate(productId, marketplace, schedules, fallbackRate, now?)`
+  - **Resolution Priority:**
+    1. Product-specific schedule (`product_id === productId`) with active campaign
+    2. Store-wide schedule (`product_id === null`) with active campaign
+    3. Fallback to provided `fallbackRate` (product.commission_rate)
+  - **Active Check:** `now >= valid_from && now < valid_until && is_active === true`
+  - Returns full `CommissionResolution` object for UI feedback
+
+#### Hook: `useCommissionSchedules`
+- **[2026-02-10]** Created `src/hooks/useCommissionSchedules.ts` (~135 lines):
+  - **State:** `schedules` (CommissionSchedule[]), `loading` (boolean)
+  - **CRUD Operations:**
+    - `fetchSchedules()` — Loads all schedules for store/marketplace, sorted by valid_from
+    - `createSchedule(schedule)` — INSERT with auto store_id/marketplace, returns created schedule
+    - `updateSchedule(id, updates)` — UPDATE with updated_at timestamp
+    - `deleteSchedule(id)` — DELETE by id
+  - **JIT Resolver:** `resolveCurrentRate(productId, fallbackRate)` — Calls `resolveCommissionRate()` with current schedules
+  - **Computed Lists:**
+    - `activeSchedules` — Currently active campaigns (now between valid_from and valid_until)
+    - `upcomingSchedules` — Future campaigns sorted by start date
+    - `expiredSchedules` — Past campaigns from last 30 days
+  - **Memoized** for performance: all computed lists use `useMemo`
+
+#### Hook Update: `useProducts`
+- **[2026-02-10]** Updated function signature to accept commission schedules:
+  - `useProducts(storeId, shippingRates, commissionSchedules, marketplace)`
+- **[2026-02-10]** Extended `ProductWithProfit` interface:
+  - Added `commissionResolution: CommissionResolution` field for campaign visibility
+- **[2026-02-10]** Updated `computeProfit()` to use JIT resolver:
+  - Calls `resolveCommissionRate()` instead of static `product.commission_rate`
+  - Returns both `profit` and `commissionResolution` for each product
+- **[2026-02-10]** Added reactive recalculation:
+  - Products recalculate profit when `commissionSchedules` array changes
+  - Enables instant UI update when campaigns start/end
+
+#### App Integration
+- **[2026-02-10]** Imported `useCommissionSchedules` hook in `App.tsx`
+- **[2026-02-10]** Initialized hook: `useCommissionSchedules(store?.id, store?.marketplace ?? 'Trendyol')`
+- **[2026-02-10]** Passed `commissionSchedules` to `useProducts` for JIT resolution
+- **[2026-02-10]** Passed `commissionSchedules` to `CalculatorPage` for campaign display
+- **[2026-02-10]** Added `schedulesLoading` to combined loading state
+
+#### CalculatorPage Enhancement
+- **[2026-02-10]** Added `commissionSchedules` prop to `CalculatorPageProps`
+- **[2026-02-10]** Added `activeStoreWideCampaign` memoized lookup
+- **[2026-02-10]** Added campaign indicator below commission input:
+  - Shows green "Kampanya" badge when store-wide campaign is active
+  - Displays campaign name and rate (e.g., "Flash Indirim (%5)")
+- **[2026-02-10]** Fixed marketplace label mapping for both lowercase and TitleCase keys
+
+#### Build Verification
+- **[2026-02-10]** Production build: **0 TypeScript errors**
+- **[2026-02-10]** Bundle size: 963.25 KB JS (gzip: 276.15 KB), 44.87 KB CSS (gzip: 7.84 KB)
+- **[2026-02-10]** All imports resolved, type safety verified
+
+#### File Change Matrix (Logic Layer)
+| File | Action | Lines |
+| :--- | :--- | :--- |
+| `src/lib/financial-engine.ts` | UPDATED | +65 (interfaces + resolver) |
+| `src/hooks/useCommissionSchedules.ts` | NEW | ~135 |
+| `src/hooks/useProducts.ts` | UPDATED | +25 (new params + resolution) |
+| `src/App.tsx` | UPDATED | +5 (import + hook + props) |
+| `src/pages/CalculatorPage.tsx` | UPDATED | +20 (prop + campaign display) |
+| **TOTAL** | | **~250** |
+
+**Task 6.3 Complete Summary:**
+- Database Layer: ~221 lines (migration + types)
+- Logic Layer: ~250 lines (engine + hooks + integration)
+- **Grand Total: ~471 lines of code**
+
+**Next Step:** Task 6.4 — Campaign Commission UI (Settings panel + ProductModal enhancements)
 
 ### [ ] Task 6.4: Kampanya Komisyon UI (Campaign Commission Interface)
 **Objective:** UI for managing time-scheduled commission campaigns.
@@ -716,15 +793,15 @@ Instead of fixed templates, implement a dynamic builder where users can add unli
 | **Task 6.1** (Orders DB) | `database.ts` | 2 migrations | +2 tables, +8 RLS policies | ✅ DONE |
 | **Task 6.2** (Orders UI) | `App.tsx`, `Sidebar.tsx` | `OrdersPage.tsx`, `useOrders.ts`, `OrderModal.tsx`, `OrderDeleteConfirm.tsx` | — | ✅ DONE |
 | **Task 6.3** (Commission DB) | `database.ts` | 1 migration | +1 table, +4 RLS policies | ✅ DONE |
-| **Task 6.3** (Logic Layer) | `financial-engine.ts`, `useProducts.ts` | `useCommissionSchedules.ts` | — | 🔄 IN PROGRESS |
-| **Task 6.4** (Commission UI) | `ProductModal.tsx`, `CalculatorPage.tsx`, `SettingsPage.tsx` | `CommissionScheduleSettings.tsx` | — | ⏳ PENDING |
+| **Task 6.3** (Logic Layer) | `financial-engine.ts`, `useProducts.ts`, `App.tsx`, `CalculatorPage.tsx` | `useCommissionSchedules.ts` | — | ✅ DONE |
+| **Task 6.4** (Commission UI) | `ProductModal.tsx`, `SettingsPage.tsx` | `CommissionScheduleSettings.tsx` | — | 🔄 NEXT |
 | **Task 6.5** (Costs DB) | `database.ts`, `financial-engine.ts`, `types/index.ts` | 1 migration | +5 columns on products | ⏳ PENDING |
 | **Task 6.6** (Costs UI) | `ProductModal.tsx`, `CalculatorPage.tsx`, `SettingsPage.tsx` | `PackagingPopup.tsx`, `ServiceFeeSettings.tsx` | — | ⏳ PENDING |
 
 **Progress:**
-- **Completed:** Tasks 6.1, 6.2, 6.3 (DB Layer) — 4 new files + 3 migrations, ~1551 lines of code
-- **In Progress:** Task 6.3 (Logic Layer) — Financial engine + hook integration
-- **Remaining:** Tasks 6.3 (UI), 6.4-6.6 — ~10 new files, ~1170 lines estimated
+- **Completed:** Tasks 6.1, 6.2, 6.3 (Full) — 5 new files + 3 migrations, ~1801 lines of code
+- **Next:** Task 6.4 (Commission UI) — Settings panel + ProductModal enhancements
+- **Remaining:** Tasks 6.4-6.6 — ~9 new files, ~920 lines estimated
 
 ---
 
