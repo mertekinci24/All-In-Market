@@ -8,8 +8,8 @@ This is the **LIVING STATE** of the project.
 
 # 1. 🚦 Project Status Board
 **Current Phase:** Phase 6 (Operasyonel Derinlik & Kampanya Yonetimi)
-**Active Task:** Task 6.3 (Zaman Ayarli Komisyon Sistemi)
-**Last Completed:** Task 6.1 & 6.2 (Siparisler Modulu — Database & Frontend)
+**Active Task:** Task 6.3 Logic Layer (Financial Engine Integration)
+**Last Completed:** Task 6.3 Database Layer (Commission Schedules Table — DONE ✅)
 
 ---
 
@@ -538,48 +538,95 @@ This is the **LIVING STATE** of the project.
 | `src/components/layout/Sidebar.tsx` | UPDATED | +1 import, +1 navItem entry |
 | **TOTAL** | | **~1025** |
 
-### [ ] Task 6.3: Zaman Ayarli Komisyon Sistemi (JIT Commission Resolution)
+### [x] Task 6.3: Zaman Ayarli Komisyon Sistemi (JIT Commission Resolution) — Database Layer
 **Objective:** Campaign-aware commission rates with date-range scheduling, resolved at calculation time.
 
-**Database Table:**
+**Changelog:**
 
-#### `commission_schedules` table
-| Column | Type | Description |
+#### Database Layer: `commission_schedules` Table
+- **[2026-02-10]** Created `commission_schedules` table with 14 columns:
+  - `id` (uuid PK) — Auto-generated unique identifier
+  - `store_id` (uuid FK → stores, NOT NULL, ON DELETE CASCADE) — Store owner
+  - `product_id` (uuid FK → products, ON DELETE CASCADE) — NULL = store-wide schedule, NOT NULL = product-specific
+  - `marketplace` (text, NOT NULL) — Target marketplace ('Trendyol', 'Hepsiburada', 'Amazon TR')
+  - `normal_rate` (numeric, default 0.15) — Standard commission rate (0-1, e.g., 0.15 = 15%)
+  - `campaign_rate` (numeric, default 0.15) — Campaign commission rate during valid window (0-1)
+  - `campaign_name` (text, default '') — Campaign label (e.g., "Flash Indirim", "Ramazan Kampanyasi")
+  - `valid_from` (timestamptz, default now()) — Campaign start timestamp (inclusive)
+  - `valid_until` (timestamptz, default now() + 7 days) — Campaign end timestamp (exclusive)
+  - `seller_discount_share` (numeric, default 1.0) — Seller's share of price discount (0-1)
+  - `marketplace_discount_share` (numeric, default 0) — Marketplace's share of discount (0-1)
+  - `is_active` (boolean, default true) — Soft delete flag
+  - `created_at` (timestamptz, default now()) — Creation timestamp
+  - `updated_at` (timestamptz, default now()) — Last update timestamp
+- **[2026-02-10]** Applied 5 indexes for fast JIT resolution:
+  - `store_id` — Fast store-level queries
+  - `product_id` — Product-specific schedule lookups
+  - `marketplace` — Marketplace filtering
+  - Composite index on `(store_id, marketplace, product_id)` — JIT lookup optimization
+  - Time-range index on `(valid_from, valid_until)` — Active campaign queries
+- **[2026-02-10]** Added constraint: `valid_from < valid_until` check constraint for date validity
+
+#### Row Level Security (RLS)
+- **[2026-02-10]** Enabled RLS on `commission_schedules` table with 4 restrictive policies:
+  - **"Users can view own commission schedules"** — SELECT policy checking `EXISTS (SELECT 1 FROM stores WHERE stores.id = commission_schedules.store_id AND stores.user_id = auth.uid())`
+  - **"Users can create own commission schedules"** — INSERT policy with same ownership check + WITH CHECK for store_id validation
+  - **"Users can update own commission schedules"** — UPDATE policy with dual USING + WITH CHECK clauses
+  - **"Users can delete own commission schedules"** — DELETE policy with ownership verification
+- **[2026-02-10]** All policies verify store ownership via `stores.user_id = auth.uid()` transitive check
+- **[2026-02-10]** Users can only access/modify schedules for their own stores
+
+#### JIT Resolution Pattern (Zero Infrastructure)
+- **[2026-02-10]** **Active Campaign Check:** `NOW() BETWEEN valid_from AND valid_until AND is_active = true`
+- **[2026-02-10]** **Resolution Priority (computed at calculation time):**
+  1. Product-specific schedule (`product_id IS NOT NULL`) with active campaign → use `campaign_rate`
+  2. Store-wide schedule (`product_id IS NULL`) with active campaign → use store-wide `campaign_rate`
+  3. Fallback to `products.commission_rate` (manual override)
+- **[2026-02-10]** **JIT Advantages:**
+  - No cron jobs or Edge Function schedulers required
+  - Nanosecond-accurate campaign transitions (vs. cron's minute-level granularity)
+  - Zero infrastructure dependency, no failure modes, no retry logic
+  - Same resolution pattern already proven in `useShippingRates` system
+  - Campaigns are "passive" — automatically active/inactive based on current timestamp
+
+#### TypeScript Types
+- **[2026-02-10]** Added `commission_schedules` to `Database['public']['Tables']` in `src/types/database.ts`:
+  - Full Row type with 14 columns (all timestamptz fields typed as string for JSON serialization)
+  - Insert type with optional id, created_at, updated_at, and defaulted fields
+  - Update type with all fields optional
+  - Relationships definitions: `store_id` → `stores`, `product_id` → `products`
+
+#### Build Verification
+- **[2026-02-10]** Migration applied successfully via `mcp__supabase__apply_migration` tool
+- **[2026-02-10]** Migration includes comprehensive documentation header (70+ lines) explaining:
+  - Table schema with column descriptions
+  - Resolution priority logic
+  - Security model (RLS policies)
+  - Index strategy
+  - JIT pattern benefits vs. cron-based alternatives
+  - Validation rules and soft delete pattern
+- **[2026-02-10]** Production build: **0 TypeScript errors**, 959.08 KB JS (gzip: 275.13 KB), 44.89 KB CSS (gzip: 7.85 KB)
+- **[2026-02-10]** All foreign key relationships verified
+- **[2026-02-10]** Database schema ready for logic layer integration
+
+#### Important Notes
+- **[2026-02-10]** **Soft Delete Pattern:** Setting `is_active = false` keeps historical campaign data while excluding from active queries
+- **[2026-02-10]** **Date Validation:** Constraint enforces `valid_from < valid_until` at database level, preventing invalid date ranges
+- **[2026-02-10]** **Discount Share Split:** `seller_discount_share + marketplace_discount_share` should sum to ≤ 1.0 (validated at application level)
+- **[2026-02-10]** **Idempotent Migration:** Uses `CREATE TABLE IF NOT EXISTS` and `DO $$ BEGIN ... END $$` blocks for safe re-runs
+
+#### File Change Matrix
+| File | Action | Lines |
 | :--- | :--- | :--- |
-| `id` | uuid PK | Auto-generated |
-| `store_id` | uuid FK → stores | NOT NULL, ON DELETE CASCADE |
-| `product_id` | uuid FK → products | NULL = store-wide, NOT NULL = product-specific |
-| `marketplace` | text | NOT NULL |
-| `normal_rate` | numeric | Standard commission rate (0-1) |
-| `campaign_rate` | numeric | Campaign commission rate (0-1) |
-| `campaign_name` | text | "Flash Indirim", "Ramazan", etc. |
-| `valid_from` | timestamptz | Campaign start (inclusive) |
-| `valid_until` | timestamptz | Campaign end (exclusive) |
-| `seller_discount_share` | numeric | Seller's share of any price discount (0-1) |
-| `marketplace_discount_share` | numeric | Marketplace's share (0-1) |
-| `is_active` | boolean | Soft delete, default true |
-| `created_at` | timestamptz | Auto |
-| `updated_at` | timestamptz | Auto |
+| `supabase/migrations/20260210120000_create_commission_schedules_table.sql` | NEW (migration) | ~155 |
+| `src/types/database.ts` | UPDATED | +66 |
+| **TOTAL** | | **~221** |
 
-**Resolution Logic (JIT):**
-```
-resolveCommissionRate(productId, marketplace, storeId, now):
-  1. Check commission_schedules WHERE product_id = productId AND now BETWEEN valid_from AND valid_until → use campaign_rate
-  2. Check commission_schedules WHERE product_id IS NULL AND now BETWEEN valid_from AND valid_until → use store-wide campaign_rate
-  3. Fallback to product.commission_rate (manual override on the product)
-```
-
-**Scope:**
-- [ ] Migration: `commission_schedules` table with RLS
-- [ ] `src/hooks/useCommissionSchedules.ts` — CRUD hook
-  - `fetchSchedules()` — load all for store
-  - `createSchedule()` — add new campaign schedule
-  - `updateSchedule()` / `deleteSchedule()` — edit/remove
-  - `resolveCurrentRate(productId, marketplace)` — JIT resolution (checks active campaigns)
-  - `getUpcomingCampaigns()` — future campaigns sorted by start date
-- [ ] TypeScript types in `database.ts`
-- [ ] FinanceEngine update: `resolveCommissionRate()` function with JIT date check
-- [ ] `useProducts` integration: use resolved commission rate instead of static `product.commission_rate`
+**Next Steps:**
+- [ ] `src/hooks/useCommissionSchedules.ts` — CRUD hook with JIT resolver
+- [ ] FinanceEngine update: `resolveCommissionRate()` function
+- [ ] `useProducts` integration: campaign-aware commission calculation
+- [ ] UI components for campaign management (Task 6.4)
 
 ### [ ] Task 6.4: Kampanya Komisyon UI (Campaign Commission Interface)
 **Objective:** UI for managing time-scheduled commission campaigns.
@@ -626,16 +673,26 @@ calculateProfit() updated formula:
 - [ ] `financial-engine.ts` update: extended `ProfitInput` with packaging, return, service fee
 - [ ] `ProfitResult` type update: add `packagingCost`, `returnCost`, `serviceFee` fields
 
-### [ ] Task 6.6: Paketleme & Lojistik UI (Packaging Popup + Amazon Templates)
-**Objective:** Professional packaging cost popup and Amazon FBA/Seller/EasyShip logistics templates.
+### [ ] Task 6.6: Paketleme & Lojistik UI (Packaging Builder + Amazon Templates)
+**Objective:** Flexible packaging cost builder with unlimited line items and Amazon FBA/Seller/EasyShip logistics templates.
+
+**🔄 UPDATED PLAN — Flexible Packaging Builder System:**
+Instead of fixed templates, implement a dynamic builder where users can add unlimited packaging line items:
+- Each line item: Custom name (e.g., "Koruyucu köşe kartonu", "Özel bant"), unit cost, quantity, KDV (Dahil/Hariç) toggle
+- "Kalem Ekle" button to add new rows dynamically
+- Delete button per row (except last row)
+- System auto-calculates total packaging cost (VAT-adjusted) and reflects to product cost
+- Optional quick-add preset buttons: "Standart Koli", "Fragile Paket", "Zarf" (adds pre-configured line items)
 
 **Scope:**
-- [ ] `src/components/products/PackagingPopup.tsx` — Packaging cost builder popup
-  - Item list: Koli, Bant, Patpat/Balonlu Naylon, Etiket, Diger
-  - Each item: Name, Unit Cost, Quantity, KDV Dahil/Haric toggle
-  - Auto-sum: Total packaging cost (VAT-adjusted)
+- [ ] `src/components/products/PackagingPopup.tsx` — Dynamic packaging cost builder popup
+  - Dynamic line item list with unlimited rows
+  - Each item: Custom name input, Unit Cost, Quantity, KDV Dahil/Haric toggle
+  - "Kalem Ekle" button (Plus icon) adds empty row
+  - Delete button per row (Trash2 icon)
+  - Auto-sum: Total packaging cost (VAT-adjusted) displayed at bottom
   - Save → writes to product.packaging_cost + product.packaging_vat_included
-  - Preset templates: "Standart Koli (3.50 TL)", "Fragile Paket (7.00 TL)", "Zarf (1.50 TL)"
+  - Optional preset buttons: "Standart Koli (3.50 TL)", "Fragile Paket (7.00 TL)", "Zarf (1.50 TL)" — adds pre-configured items
 - [ ] ProductModal enhancement: "Paketleme" button → opens PackagingPopup
   - Shows current packaging cost as inline badge
   - "Detayli Paketleme" link to open popup
@@ -658,14 +715,16 @@ calculateProfit() updated formula:
 | :--- | :--- | :--- | :--- | :--- |
 | **Task 6.1** (Orders DB) | `database.ts` | 2 migrations | +2 tables, +8 RLS policies | ✅ DONE |
 | **Task 6.2** (Orders UI) | `App.tsx`, `Sidebar.tsx` | `OrdersPage.tsx`, `useOrders.ts`, `OrderModal.tsx`, `OrderDeleteConfirm.tsx` | — | ✅ DONE |
-| **Task 6.3** (Commission DB) | `database.ts`, `financial-engine.ts`, `useProducts.ts` | `useCommissionSchedules.ts`, 1 migration | +1 table, +4 RLS policies |
-| **Task 6.4** (Commission UI) | `ProductModal.tsx`, `CalculatorPage.tsx`, `SettingsPage.tsx` | `CommissionScheduleSettings.tsx` | — |
-| **Task 6.5** (Costs DB) | `database.ts`, `financial-engine.ts`, `types/index.ts` | 1 migration | +5 columns on products |
-| **Task 6.6** (Costs UI) | `ProductModal.tsx`, `CalculatorPage.tsx`, `SettingsPage.tsx` | `PackagingPopup.tsx`, `ServiceFeeSettings.tsx` | — |
+| **Task 6.3** (Commission DB) | `database.ts` | 1 migration | +1 table, +4 RLS policies | ✅ DONE |
+| **Task 6.3** (Logic Layer) | `financial-engine.ts`, `useProducts.ts` | `useCommissionSchedules.ts` | — | 🔄 IN PROGRESS |
+| **Task 6.4** (Commission UI) | `ProductModal.tsx`, `CalculatorPage.tsx`, `SettingsPage.tsx` | `CommissionScheduleSettings.tsx` | — | ⏳ PENDING |
+| **Task 6.5** (Costs DB) | `database.ts`, `financial-engine.ts`, `types/index.ts` | 1 migration | +5 columns on products | ⏳ PENDING |
+| **Task 6.6** (Costs UI) | `ProductModal.tsx`, `CalculatorPage.tsx`, `SettingsPage.tsx` | `PackagingPopup.tsx`, `ServiceFeeSettings.tsx` | — | ⏳ PENDING |
 
 **Progress:**
-- **Completed:** Tasks 6.1 & 6.2 — 4 new files, 2 migrations, ~1330 lines of code
-- **Remaining:** Tasks 6.3-6.6 — ~11 new files, ~1 migration, ~1170 lines estimated
+- **Completed:** Tasks 6.1, 6.2, 6.3 (DB Layer) — 4 new files + 3 migrations, ~1551 lines of code
+- **In Progress:** Task 6.3 (Logic Layer) — Financial engine + hook integration
+- **Remaining:** Tasks 6.3 (UI), 6.4-6.6 — ~10 new files, ~1170 lines estimated
 
 ---
 
