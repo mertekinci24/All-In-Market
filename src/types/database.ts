@@ -386,6 +386,72 @@ export type Database = {
           }
         ]
       }
+      commission_schedules: {
+        Row: {
+          id: string
+          store_id: string
+          product_id: string | null
+          marketplace: string
+          normal_rate: number
+          campaign_rate: number
+          campaign_name: string
+          valid_from: string
+          valid_until: string
+          seller_discount_share: number
+          marketplace_discount_share: number
+          is_active: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          store_id: string
+          product_id?: string | null
+          marketplace: string
+          normal_rate?: number
+          campaign_rate?: number
+          campaign_name?: string
+          valid_from?: string
+          valid_until?: string
+          seller_discount_share?: number
+          marketplace_discount_share?: number
+          is_active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          store_id?: string
+          product_id?: string | null
+          marketplace?: string
+          normal_rate?: number
+          campaign_rate?: number
+          campaign_name?: string
+          valid_from?: string
+          valid_until?: string
+          seller_discount_share?: number
+          marketplace_discount_share?: number
+          is_active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "commission_schedules_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "stores"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "commission_schedules_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
     }
     Views: Record<string, never>
     Functions: Record<string, never>
