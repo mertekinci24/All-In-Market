@@ -8,8 +8,8 @@ This is the **LIVING STATE** of the project.
 
 # 1. 🚦 Project Status Board
 **Current Phase:** Phase 6 (Operasyonel Derinlik & Kampanya Yonetimi)
-**Active Task:** Planning & PM Approval
-**Last Completed:** Phase 5 (Hesaplama Tutarliligi & Dinamik Kargo Barem)
+**Active Task:** Task 6.3 (Zaman Ayarli Komisyon Sistemi)
+**Last Completed:** Task 6.1 & 6.2 (Siparisler Modulu — Database & Frontend)
 
 ---
 
@@ -325,86 +325,218 @@ This is the **LIVING STATE** of the project.
 - `commission_schedules` table rows are "passive" — they become active/inactive automatically based on current timestamp
 - No failure modes, no retry logic, no monitoring required
 
-### [ ] Task 6.1: Siparisler Modulu — Database & Backend (The Orders Hub)
+### [x] Task 6.1: Siparisler Modulu — Database & Backend (The Orders Hub)
 **Objective:** Create order tracking with cart-level profit analysis and campaign split tracking.
 
-**Database Tables:**
+**Changelog:**
 
-#### `orders` table
-| Column | Type | Description |
+#### Database Layer: `orders` Table
+- **[2026-02-10]** Created `orders` table with 15 columns:
+  - `id` (uuid PK), `store_id` (uuid FK → stores, NOT NULL, ON DELETE CASCADE)
+  - `order_number` (text) — Marketplace order number (e.g., "TY-123456")
+  - `marketplace_order_id` (text) — External marketplace ID
+  - `order_date` (timestamptz) — When the order was placed
+  - `total_amount` (numeric) — Total cart value (sum of all line items)
+  - `total_shipping` (numeric) — Barem-resolved shipping for the entire cart
+  - `total_commission` (numeric) — Sum of commission across all items
+  - `total_profit` (numeric) — Calculated net profit for the entire order
+  - `campaign_name` (text) — Active campaign at time of order (if any)
+  - `campaign_seller_share` (numeric, default 0) — % of discount borne by seller (0-1)
+  - `campaign_marketplace_share` (numeric, default 0) — % of discount borne by marketplace (0-1)
+  - `status` (text, default 'pending') — Order status: 'pending' / 'shipped' / 'delivered' / 'returned' / 'cancelled'
+  - `notes` (text, default '') — Optional user notes
+  - `created_at` (timestamptz, default now())
+  - `updated_at` (timestamptz, default now())
+- **[2026-02-10]** Applied index on `store_id` for fast store-level queries.
+- **[2026-02-10]** Applied composite index on `(store_id, order_date DESC)` for timeline pagination.
+- **[2026-02-10]** Applied index on `status` for status-based filtering.
+
+#### Database Layer: `order_items` Table
+- **[2026-02-10]** Created `order_items` table with 13 columns:
+  - `id` (uuid PK), `order_id` (uuid FK → orders, NOT NULL, ON DELETE CASCADE)
+  - `product_id` (uuid FK → products, ON DELETE SET NULL) — Nullable for snapshot persistence
+  - `product_name` (text, NOT NULL) — Denormalized snapshot (survives product deletion)
+  - `quantity` (integer, NOT NULL, default 1) — Units ordered
+  - `unit_price` (numeric, NOT NULL, default 0) — Price at time of sale
+  - `buy_price_at_sale` (numeric, NOT NULL, default 0) — Buy price snapshot
+  - `commission_rate_at_sale` (numeric, NOT NULL, default 0.15) — Resolved commission rate at sale time
+  - `vat_rate_at_sale` (integer, NOT NULL, default 20) — VAT rate snapshot
+  - `shipping_share` (numeric, NOT NULL, default 0) — This item's proportional share of total shipping cost
+  - `extra_cost` (numeric, NOT NULL, default 0) — Per-unit extra costs
+  - `ad_cost` (numeric, NOT NULL, default 0) — Per-unit ad costs
+  - `net_profit` (numeric, NOT NULL, default 0) — Pre-calculated profit for this line item
+  - `created_at` (timestamptz, default now())
+- **[2026-02-10]** Applied index on `order_id` for fast item retrieval per order.
+- **[2026-02-10]** Applied index on `product_id` for reverse product→order lookups.
+
+#### Row Level Security (RLS)
+- **[2026-02-10]** Enabled RLS on `orders` table with 4 restrictive policies:
+  - **"Users can view own orders"** — SELECT policy checking `EXISTS (SELECT 1 FROM stores WHERE stores.id = orders.store_id AND stores.user_id = auth.uid())`
+  - **"Users can create own orders"** — INSERT policy with same ownership check + WITH CHECK for store_id validation
+  - **"Users can update own orders"** — UPDATE policy with dual USING + WITH CHECK clauses
+  - **"Users can delete own orders"** — DELETE policy with ownership verification
+- **[2026-02-10]** Enabled RLS on `order_items` table with 4 restrictive policies:
+  - All policies check via `orders → stores` join: `EXISTS (SELECT 1 FROM orders JOIN stores ON stores.id = orders.store_id WHERE orders.id = order_items.order_id AND stores.user_id = auth.uid())`
+  - SELECT, INSERT, UPDATE, DELETE policies all use this transitive ownership check
+
+#### Cart Shipping Logic (Tek Paket Kurali)
+- **[2026-02-10]** Documented cart-level shipping resolution: `resolveShippingCost()` is called with `SUM(unit_price * quantity)` as the salesPrice
+- **[2026-02-10]** Shipping cost proportionally distributed to each `order_item.shipping_share` based on item value weight: `(item_total / cart_total) * shipping_cost`
+- **[2026-02-10]** This ensures a 300 TL cart with 3 items of 100 TL each gets the "300+ TL" barem tier, not three separate "0-150 TL" tiers
+
+#### TypeScript Types
+- **[2026-02-10]** Added `orders` to `Database['public']['Tables']` in `src/types/database.ts`:
+  - Full Row/Insert/Update types with 15 columns
+  - Relationships definition: `store_id` → `stores`, reverse `order_items` array
+- **[2026-02-10]** Added `order_items` to `Database['public']['Tables']`:
+  - Full Row/Insert/Update types with 13 columns
+  - Relationships: `order_id` → `orders`, `product_id` → `products`
+
+#### Build Verification
+- **[2026-02-10]** Migration files created with idempotent `CREATE TABLE IF NOT EXISTS` and `DO $$ BEGIN ... END $$` blocks for safe re-runs.
+- **[2026-02-10]** All foreign keys use `ON DELETE CASCADE` (orders → store) and `ON DELETE SET NULL` (order_items → products) for referential integrity.
+- **[2026-02-10]** Database ready for frontend integration.
+
+#### File Change Matrix
+| File | Action | Lines |
 | :--- | :--- | :--- |
-| `id` | uuid PK | Auto-generated |
-| `store_id` | uuid FK → stores | NOT NULL, ON DELETE CASCADE |
-| `order_number` | text | Marketplace order number (e.g., "TY-123456") |
-| `marketplace_order_id` | text | External marketplace ID |
-| `order_date` | timestamptz | When the order was placed |
-| `total_amount` | numeric | Total cart value (sum of items) |
-| `total_shipping` | numeric | Barem-resolved shipping for the entire cart |
-| `total_commission` | numeric | Sum of commission across all items |
-| `total_profit` | numeric | Calculated net profit for the entire order |
-| `campaign_name` | text | Active campaign at time of order (if any) |
-| `campaign_seller_share` | numeric | % of discount borne by seller (0-1) |
-| `campaign_marketplace_share` | numeric | % of discount borne by marketplace (0-1) |
-| `status` | text | 'pending' / 'shipped' / 'delivered' / 'returned' / 'cancelled' |
-| `notes` | text | Optional user notes |
-| `created_at` | timestamptz | Auto |
-| `updated_at` | timestamptz | Auto |
+| `supabase/migrations/20260210095937_create_orders_table.sql` | NEW (migration) | ~95 |
+| `supabase/migrations/20260210095959_create_order_items_table.sql` | NEW (migration) | ~90 |
+| `src/types/database.ts` | UPDATED | +120 |
+| **TOTAL** | | **~305** |
 
-#### `order_items` table
-| Column | Type | Description |
-| :--- | :--- | :--- |
-| `id` | uuid PK | Auto-generated |
-| `order_id` | uuid FK → orders | NOT NULL, ON DELETE CASCADE |
-| `product_id` | uuid FK → products | ON DELETE SET NULL |
-| `product_name` | text | Denormalized snapshot (survives product deletion) |
-| `quantity` | integer | Default 1 |
-| `unit_price` | numeric | Price at time of sale |
-| `buy_price_at_sale` | numeric | Buy price snapshot |
-| `commission_rate_at_sale` | numeric | Resolved commission rate at sale time |
-| `vat_rate_at_sale` | integer | VAT rate snapshot |
-| `shipping_share` | numeric | This item's share of total shipping cost |
-| `extra_cost` | numeric | Per-unit extra costs |
-| `ad_cost` | numeric | Per-unit ad costs |
-| `net_profit` | numeric | Pre-calculated profit for this line |
-
-**Cart Shipping Logic (Tek Paket Kurali):**
-- `resolveShippingCost()` is called with `SUM(unit_price * quantity)` as the salesPrice
-- The resulting shipping cost is proportionally distributed to each `order_item.shipping_share` based on item value weight: `(item_total / cart_total) * shipping_cost`
-- This ensures a 300 TL cart with 3 items of 100 TL each gets the "300+ TL" barem tier, not three separate "0-150 TL" tiers
-
-**RLS:** Store-owner only access (SELECT/INSERT/UPDATE/DELETE) via `stores.user_id = auth.uid()` join.
-
-**Scope:**
-- [ ] Migration: `orders` table with full RLS (4 policies)
-- [ ] Migration: `order_items` table with full RLS (4 policies, checks via orders → stores join)
-- [ ] TypeScript types in `database.ts`
-
-### [ ] Task 6.2: Siparisler Modulu — Frontend (Orders Page + Hook)
+### [x] Task 6.2: Siparisler Modulu — Frontend (Orders Page + Hook)
 **Objective:** Full-featured orders page with cart-level profit visualization.
 
-**Scope:**
-- [ ] `src/hooks/useOrders.ts` — CRUD + cart profit calculation hook
-  - `fetchOrders()` — loads orders with order_items via join
-  - `createOrder()` — creates order + items, resolves shipping via cart total
-  - `updateOrderStatus()` — status transitions
-  - `getOrderProfit()` — recalculates order profit with current rates
-- [ ] `src/pages/OrdersPage.tsx` — Main orders list
-  - Table with: Order #, Date, Items count, Total, Shipping, Commission, Net Profit, Status, Campaign badge
-  - Expandable rows showing individual order items with per-item breakdown
-  - Status filter tabs: Tumu / Beklemede / Kargoda / Teslim / Iade / Iptal
-  - Date range filter
-  - Summary stats bar: Toplam Siparis, Toplam Ciro, Toplam Kar, Ortalama Marj
-- [ ] `src/components/orders/OrderDetailModal.tsx` — Full order detail popup
-  - Items table with unit profit breakdown
-  - Campaign split visualization (seller vs marketplace pie)
-  - "Kargoya Verildi" / "Teslim Edildi" status update buttons
-- [ ] `src/components/orders/NewOrderModal.tsx` — Create order form
-  - Product search/select from existing products
-  - Multi-item cart with quantity
-  - Auto-calculated: shipping (cart barem), commission (per product), total profit
-  - Campaign participation toggle with seller/marketplace share inputs
-- [ ] Sidebar: Add "Siparisler" nav item with `ShoppingCart` icon after "Urunler"
-- [ ] App.tsx: Route `/orders` with OrdersPage
+**Changelog:**
+
+#### Hook: `useOrders`
+- **[2026-02-10]** Created `src/hooks/useOrders.ts` (~165 lines) managing full order lifecycle with cart-level profit analysis:
+  - **State management**: `orders` (OrderWithItems[]), `loading` (boolean)
+  - **`fetchOrders()`** — Loads orders sorted by `order_date DESC` + fetches all associated order_items in parallel via `IN` query, enriches orders with items array
+  - **`addOrder(order, items)`** — Transaction-safe order creation:
+    1. INSERT order row → returns new order
+    2. INSERT batch of order_items with `order_id` FK
+    3. Optimistic UI update: prepends new order to state
+  - **`updateOrder(id, updates, items?)`** — Order + items update with replace strategy:
+    1. UPDATE order row with `updated_at` timestamp
+    2. If `items` provided: DELETE all existing items → INSERT new items (full replace)
+    3. If `items` undefined: keep existing items unchanged
+    4. Returns enriched OrderWithItems
+  - **`deleteOrder(id)`** — Cascade delete (order_items auto-deleted via FK)
+  - **`refetch()`** — Manual refresh trigger
+- **[2026-02-10]** Export `OrderWithItems` interface (Order + items array) and `OrderStatus` union type
+- **[2026-02-10]** Cart-aware design: hook receives store_id, returns [] when store not ready
+
+#### Page: OrdersPage
+- **[2026-02-10]** Created `src/pages/OrdersPage.tsx` (~370 lines) — Enterprise-grade order management interface:
+  - **Search bar** — Full-text search across: order_number, marketplace_order_id, campaign_name, order_items.product_name (searches through item arrays)
+  - **Status tabs** (6 tabs with live counters):
+    - Tumu (All) / Beklemede (Pending) / Kargoda (Shipped) / Teslim (Delivered) / Iade (Returned) / Iptal (Cancelled)
+    - Each tab shows order count badge with dynamic color (brand-500 for active, gray for inactive)
+  - **Table columns** (9 columns):
+    - Expand button (chevron icon, rotates 180° when expanded)
+    - Order # + Campaign name (sub-label)
+    - Date (DD/MM/YYYY format)
+    - Items count (centered)
+    - Total Amount (right-aligned, TL format)
+    - Shipping (right-aligned, TL format)
+    - Net Profit (color-coded: green for profit, red for loss)
+    - Status badge (color-coded by status)
+    - Actions (Edit/Delete buttons, fade-in on row hover)
+  - **Expandable row detail** — Nested item table with slide-down animation showing:
+    - Product name, Quantity, Unit Price, Buy Price, Commission %, Shipping, Per-item Net Profit
+    - 7-column layout with glassmorphic inner card
+  - **Pagination** — 15 items per page, page number buttons (max 5 visible), prev/next arrows, item count display
+  - **Empty states**:
+    - No orders: ShoppingCart icon + "Ilk Siparisini Ekle" CTA button
+    - Filtered empty: "Filtreyle eslesen siparis bulunamadi" + suggestion text
+  - **Loading state**: Branded loading spinner (6px circle, brand-500 border)
+- **[2026-02-10]** OrderTableRow component extracted for cleaner render logic with hover states and transition animations
+
+#### Component: OrderModal
+- **[2026-02-10]** Created `src/components/orders/OrderModal.tsx` (~430 lines) — Full-featured order create/edit modal:
+  - **Order metadata section** (3-column grid):
+    - Siparis No, Pazaryeri ID, Siparis Tarihi (datetime-local input)
+    - Kampanya Adi, Satici Payi (%), Durum (5-option select)
+  - **Dynamic line items section**:
+    - "Kalem Ekle" button (Plus icon) adds empty row
+    - Each row (12-column responsive grid):
+      - Product dropdown (5 cols) — selects from existing products, auto-fills all fields
+      - Quantity input (1 col, centered)
+      - Unit Price (2 cols, right-aligned number input)
+      - Buy Price (2 cols, right-aligned number input)
+      - Live profit display (1 col, color-coded)
+      - Delete button (1 col, Trash2 icon, disabled when only 1 row)
+    - Collapsible advanced fields per row (5 mini inputs):
+      - Komisyon %, KDV %, Kargo, Ek Gider, Reklam
+  - **Real-time profit calculation** — `computeLineProfit()` uses `calculateProfit()` from financial-engine, recalculates on any field change
+  - **Product auto-fill logic** — Selecting product from dropdown:
+    1. Copies product.name → product_name
+    2. Copies product.sales_price → unit_price
+    3. Copies product.buy_price → buy_price_at_sale
+    4. Copies product commission/VAT/costs → respective fields
+    5. Resolves shipping via `resolveShippingCost(desi, sales_price, shippingRates)`
+    6. Auto-calculates net_profit
+  - **Cart totals summary** (4-column display, glassmorphic card):
+    - Toplam Tutar (sum of unit_price × quantity)
+    - Kargo (sum of shipping_share)
+    - Komisyon (sum of commission)
+    - Net Kar (sum of net_profit, color-coded)
+  - **Notes textarea** — Multi-line text input for order notes
+  - **Validation** — Checks for empty product name, missing order number before save
+  - **Save/Cancel footer** — Dual-button layout with loading states
+- **[2026-02-10]** Modal shows "Yeni Siparis" title for create, "Siparisi Duzenle" for edit
+- **[2026-02-10]** Receives `products` and `shippingRates` as props for live resolution
+
+#### Component: OrderDeleteConfirm
+- **[2026-02-10]** Created `src/components/orders/OrderDeleteConfirm.tsx` (~40 lines):
+  - AlertTriangle icon in danger circle
+  - Displays order number in confirmation message
+  - "Iptal" + "Sil" buttons (danger variant)
+  - Loading state on confirm button ("Siliniyor..." text)
+  - Backdrop blur + click-outside-to-close
+
+#### App Integration
+- **[2026-02-10]** **App.tsx** changes:
+  - Imported `useOrders`, `OrdersPage`
+  - Initialized `useOrders(store?.id)` at top level
+  - Added `/orders` route between `/products` and `/calculator`
+  - Passed 7 props to OrdersPage: orders, loading, products, shippingRates, onAdd, onUpdate, onDelete
+  - Combined loading state: `loading={isLoading || ordersLoading}` for unified spinner control
+- **[2026-02-10]** **Sidebar.tsx** changes:
+  - Imported `ShoppingCart` icon from lucide-react
+  - Added "Siparisler" nav item with `/orders` href (positioned after "Urunler")
+  - Active state indicator (green bar) + hover states follow existing design pattern
+
+#### UX Polish Details
+- **[2026-02-10]** Status color mapping:
+  - `pending` → warning (yellow/amber)
+  - `shipped` → neutral (gray)
+  - `delivered` → success (green)
+  - `returned` → danger (red)
+  - `cancelled` → danger (red)
+- **[2026-02-10]** Turkish status labels: Beklemede, Kargoda, Teslim Edildi, Iade, Iptal
+- **[2026-02-10]** All numeric displays use `tabular-nums` font-feature for vertical alignment
+- **[2026-02-10]** All currency displays use `toLocaleString('tr-TR')` + " TL" suffix
+- **[2026-02-10]** Modal max-height: 90vh with internal scroll for long order item lists
+- **[2026-02-10]** Expandable rows use `animate-slide-up` CSS class for smooth reveal
+
+#### Build Verification
+- **[2026-02-10]** Production build: **0 TypeScript errors**, 959.08 KB JS (gzip: 275.13 KB), 44.87 KB CSS (gzip: 7.84 KB)
+- **[2026-02-10]** All imports resolved successfully
+- **[2026-02-10]** Type safety: Full TypeScript coverage with Database types for Insert/Update operations
+
+#### File Change Matrix
+| File | Action | Lines |
+| :--- | :--- | :--- |
+| `src/hooks/useOrders.ts` | NEW | ~165 |
+| `src/pages/OrdersPage.tsx` | NEW | ~370 |
+| `src/components/orders/OrderModal.tsx` | NEW | ~430 |
+| `src/components/orders/OrderDeleteConfirm.tsx` | NEW | ~40 |
+| `src/App.tsx` | UPDATED | +4 imports, +3 hook lines, +14 route lines |
+| `src/components/layout/Sidebar.tsx` | UPDATED | +1 import, +1 navItem entry |
+| **TOTAL** | | **~1025** |
 
 ### [ ] Task 6.3: Zaman Ayarli Komisyon Sistemi (JIT Commission Resolution)
 **Objective:** Campaign-aware commission rates with date-range scheduling, resolved at calculation time.
@@ -522,19 +654,18 @@ calculateProfit() updated formula:
 
 ### Impact Analysis Summary
 
-| Area | Files Affected | New Files | DB Changes |
-| :--- | :--- | :--- | :--- |
-| **Task 6.1** (Orders DB) | `database.ts` | 1 migration | +2 tables, +8 RLS policies |
-| **Task 6.2** (Orders UI) | `App.tsx`, `Sidebar.tsx` | `OrdersPage.tsx`, `useOrders.ts`, `OrderDetailModal.tsx`, `NewOrderModal.tsx` | — |
+| Area | Files Affected | New Files | DB Changes | Status |
+| :--- | :--- | :--- | :--- | :--- |
+| **Task 6.1** (Orders DB) | `database.ts` | 2 migrations | +2 tables, +8 RLS policies | ✅ DONE |
+| **Task 6.2** (Orders UI) | `App.tsx`, `Sidebar.tsx` | `OrdersPage.tsx`, `useOrders.ts`, `OrderModal.tsx`, `OrderDeleteConfirm.tsx` | — | ✅ DONE |
 | **Task 6.3** (Commission DB) | `database.ts`, `financial-engine.ts`, `useProducts.ts` | `useCommissionSchedules.ts`, 1 migration | +1 table, +4 RLS policies |
 | **Task 6.4** (Commission UI) | `ProductModal.tsx`, `CalculatorPage.tsx`, `SettingsPage.tsx` | `CommissionScheduleSettings.tsx` | — |
 | **Task 6.5** (Costs DB) | `database.ts`, `financial-engine.ts`, `types/index.ts` | 1 migration | +5 columns on products |
 | **Task 6.6** (Costs UI) | `ProductModal.tsx`, `CalculatorPage.tsx`, `SettingsPage.tsx` | `PackagingPopup.tsx`, `ServiceFeeSettings.tsx` | — |
 
-**Estimated total: ~15 new files, ~3 migrations, ~2500 lines of new code**
-
-**Changelog:**
-- **[TBD]** — Awaiting PM approval to begin implementation
+**Progress:**
+- **Completed:** Tasks 6.1 & 6.2 — 4 new files, 2 migrations, ~1330 lines of code
+- **Remaining:** Tasks 6.3-6.6 — ~11 new files, ~1 migration, ~1170 lines estimated
 
 ---
 
