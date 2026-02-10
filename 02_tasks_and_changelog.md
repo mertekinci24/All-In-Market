@@ -7,9 +7,9 @@ This is the **LIVING STATE** of the project.
 ---
 
 # 1. 🚦 Project Status Board
-**Current Phase:** Phase 5 (Hesaplama Tutarliligi & Dinamik Kargo Barem)
-**Active Task:** None (Phase 5 Complete)
-**Last Completed:** Task 5.2 (Dinamik Kargo Barem Sistemi)
+**Current Phase:** Phase 6 (Operasyonel Derinlik & Kampanya Yonetimi)
+**Active Task:** Planning & PM Approval
+**Last Completed:** Phase 5 (Hesaplama Tutarliligi & Dinamik Kargo Barem)
 
 ---
 
@@ -308,6 +308,233 @@ This is the **LIVING STATE** of the project.
   | `src/components/settings/ShippingBaremSettings.tsx` | NEW | ~300 lines |
   | `src/types/database.ts` | UPDATED | +shipping_rates types |
   | `src/App.tsx` | UPDATED | +useShippingRates, +rates wiring |
+
+---
+
+## Phase 6: Operasyonel Derinlik & Kampanya Yonetimi
+**Goal:** Enterprise-grade order tracking with cart-level profit analysis, JIT campaign commission system, advanced packaging/return cost layers, and Amazon multi-logistics support.
+
+### Technical Architecture Decision: Time-Scheduled Commissions
+**Decision:** Option B — Just-in-Time (JIT) Date Check (PM Approved)
+
+**Rationale:**
+- Every profit calculation checks `NOW() BETWEEN valid_from AND valid_until` at resolve time
+- Zero infrastructure dependency (no cron jobs, no Edge Function schedulers)
+- Nanosecond-accurate campaign transitions (vs. cron's minute-level granularity)
+- Same resolution pattern already proven in `useShippingRates` — apply to commissions
+- `commission_schedules` table rows are "passive" — they become active/inactive automatically based on current timestamp
+- No failure modes, no retry logic, no monitoring required
+
+### [ ] Task 6.1: Siparisler Modulu — Database & Backend (The Orders Hub)
+**Objective:** Create order tracking with cart-level profit analysis and campaign split tracking.
+
+**Database Tables:**
+
+#### `orders` table
+| Column | Type | Description |
+| :--- | :--- | :--- |
+| `id` | uuid PK | Auto-generated |
+| `store_id` | uuid FK → stores | NOT NULL, ON DELETE CASCADE |
+| `order_number` | text | Marketplace order number (e.g., "TY-123456") |
+| `marketplace_order_id` | text | External marketplace ID |
+| `order_date` | timestamptz | When the order was placed |
+| `total_amount` | numeric | Total cart value (sum of items) |
+| `total_shipping` | numeric | Barem-resolved shipping for the entire cart |
+| `total_commission` | numeric | Sum of commission across all items |
+| `total_profit` | numeric | Calculated net profit for the entire order |
+| `campaign_name` | text | Active campaign at time of order (if any) |
+| `campaign_seller_share` | numeric | % of discount borne by seller (0-1) |
+| `campaign_marketplace_share` | numeric | % of discount borne by marketplace (0-1) |
+| `status` | text | 'pending' / 'shipped' / 'delivered' / 'returned' / 'cancelled' |
+| `notes` | text | Optional user notes |
+| `created_at` | timestamptz | Auto |
+| `updated_at` | timestamptz | Auto |
+
+#### `order_items` table
+| Column | Type | Description |
+| :--- | :--- | :--- |
+| `id` | uuid PK | Auto-generated |
+| `order_id` | uuid FK → orders | NOT NULL, ON DELETE CASCADE |
+| `product_id` | uuid FK → products | ON DELETE SET NULL |
+| `product_name` | text | Denormalized snapshot (survives product deletion) |
+| `quantity` | integer | Default 1 |
+| `unit_price` | numeric | Price at time of sale |
+| `buy_price_at_sale` | numeric | Buy price snapshot |
+| `commission_rate_at_sale` | numeric | Resolved commission rate at sale time |
+| `vat_rate_at_sale` | integer | VAT rate snapshot |
+| `shipping_share` | numeric | This item's share of total shipping cost |
+| `extra_cost` | numeric | Per-unit extra costs |
+| `ad_cost` | numeric | Per-unit ad costs |
+| `net_profit` | numeric | Pre-calculated profit for this line |
+
+**Cart Shipping Logic (Tek Paket Kurali):**
+- `resolveShippingCost()` is called with `SUM(unit_price * quantity)` as the salesPrice
+- The resulting shipping cost is proportionally distributed to each `order_item.shipping_share` based on item value weight: `(item_total / cart_total) * shipping_cost`
+- This ensures a 300 TL cart with 3 items of 100 TL each gets the "300+ TL" barem tier, not three separate "0-150 TL" tiers
+
+**RLS:** Store-owner only access (SELECT/INSERT/UPDATE/DELETE) via `stores.user_id = auth.uid()` join.
+
+**Scope:**
+- [ ] Migration: `orders` table with full RLS (4 policies)
+- [ ] Migration: `order_items` table with full RLS (4 policies, checks via orders → stores join)
+- [ ] TypeScript types in `database.ts`
+
+### [ ] Task 6.2: Siparisler Modulu — Frontend (Orders Page + Hook)
+**Objective:** Full-featured orders page with cart-level profit visualization.
+
+**Scope:**
+- [ ] `src/hooks/useOrders.ts` — CRUD + cart profit calculation hook
+  - `fetchOrders()` — loads orders with order_items via join
+  - `createOrder()` — creates order + items, resolves shipping via cart total
+  - `updateOrderStatus()` — status transitions
+  - `getOrderProfit()` — recalculates order profit with current rates
+- [ ] `src/pages/OrdersPage.tsx` — Main orders list
+  - Table with: Order #, Date, Items count, Total, Shipping, Commission, Net Profit, Status, Campaign badge
+  - Expandable rows showing individual order items with per-item breakdown
+  - Status filter tabs: Tumu / Beklemede / Kargoda / Teslim / Iade / Iptal
+  - Date range filter
+  - Summary stats bar: Toplam Siparis, Toplam Ciro, Toplam Kar, Ortalama Marj
+- [ ] `src/components/orders/OrderDetailModal.tsx` — Full order detail popup
+  - Items table with unit profit breakdown
+  - Campaign split visualization (seller vs marketplace pie)
+  - "Kargoya Verildi" / "Teslim Edildi" status update buttons
+- [ ] `src/components/orders/NewOrderModal.tsx` — Create order form
+  - Product search/select from existing products
+  - Multi-item cart with quantity
+  - Auto-calculated: shipping (cart barem), commission (per product), total profit
+  - Campaign participation toggle with seller/marketplace share inputs
+- [ ] Sidebar: Add "Siparisler" nav item with `ShoppingCart` icon after "Urunler"
+- [ ] App.tsx: Route `/orders` with OrdersPage
+
+### [ ] Task 6.3: Zaman Ayarli Komisyon Sistemi (JIT Commission Resolution)
+**Objective:** Campaign-aware commission rates with date-range scheduling, resolved at calculation time.
+
+**Database Table:**
+
+#### `commission_schedules` table
+| Column | Type | Description |
+| :--- | :--- | :--- |
+| `id` | uuid PK | Auto-generated |
+| `store_id` | uuid FK → stores | NOT NULL, ON DELETE CASCADE |
+| `product_id` | uuid FK → products | NULL = store-wide, NOT NULL = product-specific |
+| `marketplace` | text | NOT NULL |
+| `normal_rate` | numeric | Standard commission rate (0-1) |
+| `campaign_rate` | numeric | Campaign commission rate (0-1) |
+| `campaign_name` | text | "Flash Indirim", "Ramazan", etc. |
+| `valid_from` | timestamptz | Campaign start (inclusive) |
+| `valid_until` | timestamptz | Campaign end (exclusive) |
+| `seller_discount_share` | numeric | Seller's share of any price discount (0-1) |
+| `marketplace_discount_share` | numeric | Marketplace's share (0-1) |
+| `is_active` | boolean | Soft delete, default true |
+| `created_at` | timestamptz | Auto |
+| `updated_at` | timestamptz | Auto |
+
+**Resolution Logic (JIT):**
+```
+resolveCommissionRate(productId, marketplace, storeId, now):
+  1. Check commission_schedules WHERE product_id = productId AND now BETWEEN valid_from AND valid_until → use campaign_rate
+  2. Check commission_schedules WHERE product_id IS NULL AND now BETWEEN valid_from AND valid_until → use store-wide campaign_rate
+  3. Fallback to product.commission_rate (manual override on the product)
+```
+
+**Scope:**
+- [ ] Migration: `commission_schedules` table with RLS
+- [ ] `src/hooks/useCommissionSchedules.ts` — CRUD hook
+  - `fetchSchedules()` — load all for store
+  - `createSchedule()` — add new campaign schedule
+  - `updateSchedule()` / `deleteSchedule()` — edit/remove
+  - `resolveCurrentRate(productId, marketplace)` — JIT resolution (checks active campaigns)
+  - `getUpcomingCampaigns()` — future campaigns sorted by start date
+- [ ] TypeScript types in `database.ts`
+- [ ] FinanceEngine update: `resolveCommissionRate()` function with JIT date check
+- [ ] `useProducts` integration: use resolved commission rate instead of static `product.commission_rate`
+
+### [ ] Task 6.4: Kampanya Komisyon UI (Campaign Commission Interface)
+**Objective:** UI for managing time-scheduled commission campaigns.
+
+**Scope:**
+- [ ] `src/components/settings/CommissionScheduleSettings.tsx` — Settings panel
+  - Active campaigns list with countdown timers (remaining time)
+  - Upcoming campaigns with "starts in X" badges
+  - Expired campaigns (grayed out, last 30 days)
+  - "Yeni Kampanya" form: name, rate, start date/time, end date/time, seller/marketplace share
+  - Quick templates: "Flash Indirim (2 saat)", "Haftalik Kampanya", "Ay Sonu"
+- [ ] ProductModal enhancement: "Kampanya Komisyonu" collapsible section
+  - Shows active campaign badge if product has active campaign
+  - Quick "Kampanya Ekle" button → opens inline schedule form
+  - Date/time pickers for valid_from / valid_until
+  - Real-time preview: "Bu kampanya %15 → %5 komisyon uygulayacak, tahmini kar artisi: +X TL"
+- [ ] CalculatorPage enhancement: Campaign-aware commission display
+  - If active campaign exists, show strikethrough on normal rate + green campaign rate
+  - "(Kampanya: Flash Indirim)" label on commission row
+
+### [ ] Task 6.5: Gelismis Gider Modulleri (Advanced Cost Layers)
+**Objective:** Packaging costs with VAT sensitivity, return cost layer, and Amazon multi-logistics.
+
+**Database Changes (products table extension):**
+
+| New Column | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `packaging_cost` | numeric | 0 | Total packaging cost per unit |
+| `packaging_vat_included` | boolean | true | Is packaging cost VAT-inclusive? |
+| `return_rate` | numeric | 0 | Expected return % (0-100, e.g., 5 = 5%) |
+| `logistics_type` | text | 'standard' | 'standard' / 'fba' / 'easy_ship' |
+| `service_fee` | numeric | 0 | Marketplace service fee per order (sabit 2-3 TL) |
+
+**FinanceEngine Changes:**
+```
+calculateProfit() updated formula:
+  totalCost = buyPrice + vat + commission + shippingCost + extraCost + adCost
+            + packagingCost (VAT-adjusted) + serviceFee + (returnCost = salesPrice * returnRate/100 * returnShippingFactor)
+```
+
+**Scope:**
+- [ ] Migration: ALTER products ADD COLUMN packaging_cost, packaging_vat_included, return_rate, logistics_type, service_fee
+- [ ] TypeScript types update
+- [ ] `financial-engine.ts` update: extended `ProfitInput` with packaging, return, service fee
+- [ ] `ProfitResult` type update: add `packagingCost`, `returnCost`, `serviceFee` fields
+
+### [ ] Task 6.6: Paketleme & Lojistik UI (Packaging Popup + Amazon Templates)
+**Objective:** Professional packaging cost popup and Amazon FBA/Seller/EasyShip logistics templates.
+
+**Scope:**
+- [ ] `src/components/products/PackagingPopup.tsx` — Packaging cost builder popup
+  - Item list: Koli, Bant, Patpat/Balonlu Naylon, Etiket, Diger
+  - Each item: Name, Unit Cost, Quantity, KDV Dahil/Haric toggle
+  - Auto-sum: Total packaging cost (VAT-adjusted)
+  - Save → writes to product.packaging_cost + product.packaging_vat_included
+  - Preset templates: "Standart Koli (3.50 TL)", "Fragile Paket (7.00 TL)", "Zarf (1.50 TL)"
+- [ ] ProductModal enhancement: "Paketleme" button → opens PackagingPopup
+  - Shows current packaging cost as inline badge
+  - "Detayli Paketleme" link to open popup
+- [ ] ProductModal enhancement: "Iade Orani (%)" input field
+  - Tooltip: "Tahmini iade orani. Kar hesabina iade lojistik maliyeti olarak yansir."
+  - Shows calculated return cost preview
+- [ ] ProductModal enhancement: "Lojistik Tipi" dropdown (Amazon TR only)
+  - Options: Standart Gonderim, FBA (Fulfillment by Amazon), Kolay Gonderi (Easy Ship)
+  - Each option shows different shipping cost structure explanation
+  - FBA: Uses Amazon's fulfillment fee table (stored in shipping_rates with logistics_type filter)
+  - Easy Ship: Amazon picks up from seller, different rate structure
+- [ ] `src/components/settings/ServiceFeeSettings.tsx` — Global marketplace service fee config
+  - Per-marketplace "Hizmet Bedeli" input (default: Trendyol 2.50 TL, Hepsiburada 2.00 TL, Amazon 3.00 TL)
+  - Saves to a new `marketplace_settings` row or to store-level config
+- [ ] CalculatorPage / Products table: Updated cost breakdown showing packaging + return + service fee rows
+
+### Impact Analysis Summary
+
+| Area | Files Affected | New Files | DB Changes |
+| :--- | :--- | :--- | :--- |
+| **Task 6.1** (Orders DB) | `database.ts` | 1 migration | +2 tables, +8 RLS policies |
+| **Task 6.2** (Orders UI) | `App.tsx`, `Sidebar.tsx` | `OrdersPage.tsx`, `useOrders.ts`, `OrderDetailModal.tsx`, `NewOrderModal.tsx` | — |
+| **Task 6.3** (Commission DB) | `database.ts`, `financial-engine.ts`, `useProducts.ts` | `useCommissionSchedules.ts`, 1 migration | +1 table, +4 RLS policies |
+| **Task 6.4** (Commission UI) | `ProductModal.tsx`, `CalculatorPage.tsx`, `SettingsPage.tsx` | `CommissionScheduleSettings.tsx` | — |
+| **Task 6.5** (Costs DB) | `database.ts`, `financial-engine.ts`, `types/index.ts` | 1 migration | +5 columns on products |
+| **Task 6.6** (Costs UI) | `ProductModal.tsx`, `CalculatorPage.tsx`, `SettingsPage.tsx` | `PackagingPopup.tsx`, `ServiceFeeSettings.tsx` | — |
+
+**Estimated total: ~15 new files, ~3 migrations, ~2500 lines of new code**
+
+**Changelog:**
+- **[TBD]** — Awaiting PM approval to begin implementation
 
 ---
 
