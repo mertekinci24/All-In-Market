@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react'
 import { Calculator, ArrowRight, Truck } from 'lucide-react'
+import { InfoTooltip } from '@/components/ui/InfoTooltip'
 import { Header } from '@/components/layout/Header'
 import { Card, CardHeader } from '@/components/ui/Card'
 import { Input } from '@/components/ui/Input'
@@ -34,6 +35,9 @@ export function CalculatorPage({ shippingRates, commissionSchedules, marketplace
   const [extraCost, setExtraCost] = useState('0')
   const [adCost, setAdCost] = useState('0')
   const [manualShipping, setManualShipping] = useState('')
+  const [packagingCost, setPackagingCost] = useState('0')
+  const [returnRate, setReturnRate] = useState('0')
+  const [serviceFee, setServiceFee] = useState('0')
   const [result, setResult] = useState<ProfitResult | null>(null)
 
   const activeStoreWideCampaign = useMemo(() => {
@@ -64,6 +68,9 @@ export function CalculatorPage({ shippingRates, commissionSchedules, marketplace
       shippingCost: effectiveShipping,
       extraCost: parseFloat(extraCost) || 0,
       adCost: parseFloat(adCost) || 0,
+      packagingCost: parseFloat(packagingCost) || 0,
+      returnRate: parseFloat(returnRate) || 0,
+      serviceFee: parseFloat(serviceFee) || 0,
     })
     setResult(profitResult)
   }
@@ -178,6 +185,33 @@ export function CalculatorPage({ shippingRates, commissionSchedules, marketplace
                     onChange={(e) => setAdCost(e.target.value)}
                   />
                 </div>
+
+                <div className="rounded-lg border border-white/5 bg-surface-800/20 p-3 space-y-3">
+                  <p className="text-[11px] font-medium text-gray-500 uppercase tracking-wider">Gelişmiş Giderler</p>
+                  <Input
+                    label="Paketleme Maliyeti (TL)"
+                    type="number"
+                    placeholder="0"
+                    value={packagingCost}
+                    onChange={(e) => setPackagingCost(e.target.value)}
+                  />
+                  <div className="grid grid-cols-2 gap-3">
+                    <Input
+                      label="İade Oranı (%)"
+                      type="number"
+                      placeholder="0"
+                      value={returnRate}
+                      onChange={(e) => setReturnRate(e.target.value)}
+                    />
+                    <Input
+                      label="Hizmet Bedeli (TL)"
+                      type="number"
+                      placeholder="0"
+                      value={serviceFee}
+                      onChange={(e) => setServiceFee(e.target.value)}
+                    />
+                  </div>
+                </div>
                 <Button className="w-full mt-2" onClick={handleCalculate}>
                   <Calculator className="h-4 w-4" />
                   Hesapla
@@ -254,7 +288,10 @@ export function CalculatorPage({ shippingRates, commissionSchedules, marketplace
                 )}>
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">Net Kar</p>
+                      <p className="text-xs font-medium text-gray-500 uppercase tracking-wider flex items-center gap-1">
+                        Net Kar
+                        <InfoTooltip text="Satış Fiyatından tüm maliyetler (KDV, komisyon, kargo, reklam, iade maliyeti vb.) düşüldükten sonra kalan net kazanç." />
+                      </p>
                       <p className={cn(
                         'text-3xl font-semibold tracking-tight mt-1',
                         result.netProfit >= 0 ? 'text-success-400' : 'text-danger-400'
@@ -264,13 +301,19 @@ export function CalculatorPage({ shippingRates, commissionSchedules, marketplace
                     </div>
                     <div className="flex gap-3">
                       <div className="text-center">
-                        <p className="text-xs text-gray-500">Marj</p>
+                        <p className="text-xs text-gray-500 flex items-center gap-1">
+                          Marj
+                          <InfoTooltip text="Net Kâr / Satış Fiyatı × 100. Satış fiyatının yüzde kaçının net kâr olduğunu gösterir." />
+                        </p>
                         <Badge variant={result.margin >= 0 ? 'success' : 'danger'} className="mt-1">
                           %{result.margin}
                         </Badge>
                       </div>
                       <div className="text-center">
-                        <p className="text-xs text-gray-500">ROI</p>
+                        <p className="text-xs text-gray-500 flex items-center gap-1">
+                          ROI
+                          <InfoTooltip text="Return on Investment: Net Kâr / Alış Maliyeti × 100. Yatırdığınız her 1 TL'nin yüzde kaç getiri sağladığını gösterir." />
+                        </p>
                         <Badge variant={result.roi >= 0 ? 'success' : 'danger'} className="mt-1">
                           %{result.roi}
                         </Badge>
@@ -294,6 +337,9 @@ export function CalculatorPage({ shippingRates, commissionSchedules, marketplace
                       />
                       {result.extraCost > 0 && <CostRow label="Ek Giderler" value={result.extraCost} negative />}
                       {result.adCost > 0 && <CostRow label="Reklam" value={result.adCost} negative />}
+                      {result.packagingCost > 0 && <CostRow label="Paketleme" value={result.packagingCost} negative />}
+                      {result.returnCost > 0 && <CostRow label="İade Maliyeti" value={result.returnCost} negative />}
+                      {result.serviceFee > 0 && <CostRow label="Hizmet Bedeli" value={result.serviceFee} negative />}
                     </div>
                     <div className="border-t border-white/5 pt-2">
                       <div className="flex items-center justify-between">

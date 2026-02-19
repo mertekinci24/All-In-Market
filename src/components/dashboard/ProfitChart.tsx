@@ -33,8 +33,8 @@ export function ProfitChart({ products }: ProfitChartProps) {
           <p className="text-sm text-gray-500">Grafik icin urun ekleyin</p>
         </div>
       ) : (
-        <div className="h-64">
-          <ResponsiveContainer width="100%" height="100%">
+        <div className="h-64 w-full">
+          <ResponsiveContainer width="100%" height="100%" minHeight={250} debounce={200}>
             <AreaChart data={chartData}>
               <defs>
                 <linearGradient id="profitGradient" x1="0" y1="0" x2="0" y2="1">

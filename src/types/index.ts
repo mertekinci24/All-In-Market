@@ -8,6 +8,9 @@ export interface ProfitResult {
   shippingCost: number
   extraCost: number
   adCost: number
+  packagingCost: number
+  returnCost: number
+  serviceFee: number
   totalCost: number
   netProfit: number
   margin: number

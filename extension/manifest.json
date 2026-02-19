@@ -1,0 +1,60 @@
+{
+    "manifest_version": 3,
+    "name": "Sky-Market Live Intelligence",
+    "version": "1.4.1",
+    "content_security_policy": {
+        "extension_pages": "script-src 'self'; object-src 'self'; connect-src 'self' http://localhost:5173 https://*.supabase.co"
+    },
+    "description": "Trendyol ürün sayfalarından fiyat ve rakip bilgilerini otomatik yakalar, Sky-Market Dashboard'a aktarır.",
+    "permissions": [
+        "storage",
+        "activeTab"
+    ],
+    "host_permissions": [
+        "http://localhost:5173/*",
+        "https://*.trendyol.com/*"
+    ],
+    "background": {
+        "service_worker": "background.js",
+        "type": "module"
+    },
+    "content_scripts": [
+        {
+            "matches": [
+                "http://localhost:5173/*"
+            ],
+            "js": [
+                "content/dashboard-bridge.js"
+            ],
+            "run_at": "document_idle"
+        },
+        {
+            "matches": [
+                "https://www.trendyol.com/*",
+                "https://trendyol.com/*"
+            ],
+            "js": [
+                "content/trendyol-parser.js",
+                "content/serp-parser.js",
+                "content/overlay.js"
+            ],
+            "css": [
+                "content/overlay.css"
+            ],
+            "run_at": "document_idle"
+        }
+    ],
+    "action": {
+        "default_popup": "popup/popup.html",
+        "default_icon": {
+            "16": "icons/icon-16.png",
+            "48": "icons/icon-48.png",
+            "128": "icons/icon-128.png"
+        }
+    },
+    "icons": {
+        "16": "icons/icon-16.png",
+        "48": "icons/icon-48.png",
+        "128": "icons/icon-128.png"
+    }
+}

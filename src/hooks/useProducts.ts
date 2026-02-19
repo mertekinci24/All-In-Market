@@ -41,12 +41,16 @@ function computeProfit(
     shippingCost,
     extraCost: p.extra_cost,
     adCost: p.ad_cost,
+    packagingCost: p.packaging_cost,
+    packagingVatIncluded: p.packaging_vat_included,
+    returnRate: p.return_rate,
+    serviceFee: p.service_fee,
   })
 
   return { profit, commissionResolution }
 }
 
-const PRODUCT_COLUMNS = 'id, store_id, external_id, name, buy_price, sales_price, competitor_price, commission_rate, vat_rate, desi, shipping_cost, extra_cost, ad_cost, stock_status, image_url, category, marketplace_url, last_scraped, created_at, updated_at'
+const PRODUCT_COLUMNS = 'id, store_id, external_id, name, buy_price, sales_price, competitor_price, commission_rate, vat_rate, desi, shipping_cost, extra_cost, ad_cost, stock_status, image_url, category, marketplace_url, last_scraped, packaging_cost, packaging_vat_included, return_rate, logistics_type, service_fee, created_at, updated_at'
 
 export function useProducts(
   storeId: string | undefined,

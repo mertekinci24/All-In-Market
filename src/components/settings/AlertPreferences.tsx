@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react'
 import { SlidersHorizontal } from 'lucide-react'
 import { Card, CardHeader } from '@/components/ui/Card'
@@ -30,6 +31,7 @@ const TOGGLES: ToggleItem[] = [
 export function AlertPreferences({ settings, saving, onSave }: AlertPreferencesProps) {
   const [marginThreshold, setMarginThreshold] = useState('10')
   const [priceThreshold, setPriceThreshold] = useState('5')
+  const [stockThreshold, setStockThreshold] = useState('10')
   const [toggles, setToggles] = useState<Record<string, boolean>>({
     notify_price_drop: true,
     notify_margin_warning: true,
@@ -41,6 +43,7 @@ export function AlertPreferences({ settings, saving, onSave }: AlertPreferencesP
     if (settings) {
       setMarginThreshold(String(settings.margin_threshold))
       setPriceThreshold(String(settings.price_change_threshold))
+      setStockThreshold(String(settings.stock_threshold ?? 10))
       setToggles({
         notify_price_drop: settings.notify_price_drop,
         notify_margin_warning: settings.notify_margin_warning,
@@ -59,13 +62,15 @@ export function AlertPreferences({ settings, saving, onSave }: AlertPreferencesP
   function handleSaveThresholds() {
     const mt = parseFloat(marginThreshold)
     const pt = parseFloat(priceThreshold)
-    if (isNaN(mt) || isNaN(pt)) return
-    onSave({ margin_threshold: mt, price_change_threshold: pt })
+    const st = parseInt(stockThreshold)
+    if (isNaN(mt) || isNaN(pt) || isNaN(st)) return
+    onSave({ margin_threshold: mt, price_change_threshold: pt, stock_threshold: st })
   }
 
   const thresholdsDirty =
     marginThreshold !== String(settings?.margin_threshold ?? '10') ||
-    priceThreshold !== String(settings?.price_change_threshold ?? '5')
+    priceThreshold !== String(settings?.price_change_threshold ?? '5') ||
+    stockThreshold !== String(settings?.stock_threshold ?? '10')
 
   return (
     <Card>
@@ -108,18 +113,24 @@ export function AlertPreferences({ settings, saving, onSave }: AlertPreferencesP
 
         <div className="mt-2 pt-3 border-t border-white/5">
           <p className="text-xs font-medium text-gray-400 mb-2">Esik Degerleri</p>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-3 gap-3">
             <Input
-              label="Minimum Marj (%)"
+              label="Min. Marj (%)"
               type="number"
               value={marginThreshold}
               onChange={(e) => setMarginThreshold(e.target.value)}
             />
             <Input
-              label="Fiyat Degisim Esigi (%)"
+              label="Fiyat Deg. Esigi (%)"
               type="number"
               value={priceThreshold}
               onChange={(e) => setPriceThreshold(e.target.value)}
+            />
+            <Input
+              label="Min. Stok (Adet)"
+              type="number"
+              value={stockThreshold}
+              onChange={(e) => setStockThreshold(e.target.value)}
             />
           </div>
           {thresholdsDirty && (

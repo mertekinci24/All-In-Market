@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="tr">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sky-Market Live Intelligence</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      width: 320px;
+      min-height: 200px;
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      background: linear-gradient(180deg, #040712 0%, #0c1322 100%);
+      color: #e2e8f0;
+    }
+
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 16px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 32px;
+      height: 32px;
+      border-radius: 10px;
+      background: rgba(0, 178, 110, 0.12);
+      color: #00b26e;
+      font-weight: 800;
+      font-size: 12px;
+    }
+
+    .header-text h1 {
+      font-size: 13px;
+      font-weight: 600;
+      color: #f1f5f9;
+    }
+
+    .header-text p {
+      font-size: 10px;
+      color: #64748b;
+      margin-top: 1px;
+    }
+
+    .status-card {
+      margin: 12px;
+      padding: 12px;
+      border-radius: 10px;
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      background: rgba(15, 23, 42, 0.5);
+    }
+
+    .status-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 6px 0;
+    }
+
+    .status-label {
+      font-size: 11px;
+      color: #94a3b8;
+    }
+
+    .status-value {
+      font-size: 11px;
+      font-weight: 600;
+    }
+
+    .connected {
+      color: #34d399;
+    }
+
+    .disconnected {
+      color: #f87171;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 8px;
+      border-radius: 6px;
+      font-size: 10px;
+      font-weight: 600;
+    }
+
+    .badge-success {
+      background: rgba(16, 185, 129, 0.1);
+      color: #34d399;
+      border: 1px solid rgba(16, 185, 129, 0.2);
+    }
+
+    .badge-danger {
+      background: rgba(239, 68, 68, 0.1);
+      color: #f87171;
+      border: 1px solid rgba(239, 68, 68, 0.2);
+    }
+
+    .capture-card {
+      margin: 0 12px 12px;
+      padding: 12px;
+      border-radius: 10px;
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      background: rgba(15, 23, 42, 0.5);
+    }
+
+    .capture-title {
+      font-size: 10px;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+
+    .capture-empty {
+      font-size: 11px;
+      color: #475569;
+      text-align: center;
+      padding: 12px 0;
+    }
+
+    .capture-data {
+      font-size: 11px;
+    }
+
+    .capture-name {
+      color: #e2e8f0;
+      font-weight: 500;
+      margin-bottom: 4px;
+      line-height: 1.4;
+      max-height: 2.8em;
+      overflow: hidden;
+    }
+
+    .capture-price {
+      font-size: 16px;
+      font-weight: 700;
+      color: #00b26e;
+    }
+
+    .capture-seller {
+      font-size: 10px;
+      color: #64748b;
+      margin-top: 2px;
+    }
+
+    .capture-time {
+      font-size: 9px;
+      color: #475569;
+      margin-top: 6px;
+      text-align: right;
+    }
+
+    .footer {
+      padding: 10px 12px;
+      border-top: 1px solid rgba(255, 255, 255, 0.06);
+    }
+
+    .dashboard-link {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      width: 100%;
+      padding: 8px;
+      border-radius: 8px;
+      background: rgba(0, 178, 110, 0.1);
+      border: 1px solid rgba(0, 178, 110, 0.2);
+      color: #00b26e;
+      font-size: 11px;
+      font-weight: 600;
+      text-decoration: none;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .dashboard-link:hover {
+      background: rgba(0, 178, 110, 0.2);
+      border-color: rgba(0, 178, 110, 0.4);
+    }
+  </style>
+</head>
+
+<body>
+  <div class="header">
+    <div class="logo">SM</div>
+    <div class="header-text">
+      <h1>Sky-Market</h1>
+      <p>Live Intelligence v1.0</p>
+    </div>
+  </div>
+
+  <div class="status-card">
+    <div class="status-row">
+      <span class="status-label">Dashboard</span>
+      <span id="connection-badge" class="badge badge-danger">● Bağlı Değil</span>
+    </div>
+    <div class="status-row">
+      <span class="status-label">Oturum</span>
+      <span id="session-info" class="status-value disconnected">—</span>
+    </div>
+  </div>
+
+  <div class="capture-card">
+    <div class="capture-title">Son Yakalanan</div>
+    <div id="capture-content" class="capture-empty">
+      Henüz veri yakalanmadı.<br />Trendyol ürün sayfasını ziyaret edin.
+    </div>
+  </div>
+
+  <div class="footer">
+    <a id="dashboard-link" class="dashboard-link" href="http://localhost:5173" target="_blank"
+      rel="noopener noreferrer">
+      🚀 Dashboard'u Aç
+    </a>
+  </div>
+
+  <script src="popup.js" type="module"></script>
+</body>
+
+</html>

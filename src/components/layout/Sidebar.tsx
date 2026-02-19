@@ -11,6 +11,7 @@ import {
   BarChart3,
   Brain,
   Loader2,
+  Pickaxe,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -19,6 +20,7 @@ const navItems = [
   { label: 'Urunler', href: '/products', icon: Package },
   { label: 'Siparisler', href: '/orders', icon: ShoppingCart },
   { label: 'Kar Hesapla', href: '/calculator', icon: Calculator },
+  { label: 'Urun Madenciligi', href: '/research', icon: Pickaxe },
   { label: 'Analiz', href: '/analytics', icon: BarChart3 },
   { label: 'Fiyat Takibi', href: '/tracking', icon: TrendingUp },
   { label: 'AI Senaryo', href: '/ai-scenario', icon: Brain },

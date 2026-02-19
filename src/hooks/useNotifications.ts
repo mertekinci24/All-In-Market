@@ -5,7 +5,7 @@ import type { Database } from '@/types/database'
 type NotificationRow = Database['public']['Tables']['notification_settings']['Row']
 type NotificationUpdate = Database['public']['Tables']['notification_settings']['Update']
 
-const COLUMNS = 'id, store_id, telegram_enabled, telegram_chat_id, telegram_bot_token, browser_enabled, notify_price_drop, notify_margin_warning, notify_stock_change, notify_competitor_change, margin_threshold, price_change_threshold, created_at, updated_at'
+const COLUMNS = 'id, store_id, telegram_enabled, telegram_chat_id, telegram_bot_token, browser_enabled, notify_price_drop, notify_margin_warning, notify_stock_change, notify_competitor_change, margin_threshold, price_change_threshold, stock_threshold, created_at, updated_at'
 
 export function useNotifications(storeId: string | undefined) {
   const [settings, setSettings] = useState<NotificationRow | null>(null)

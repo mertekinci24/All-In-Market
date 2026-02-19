@@ -12,18 +12,30 @@ import { StoreSetup } from '@/components/layout/StoreSetup'
 import { AuthPage } from '@/pages/AuthPage'
 import { DashboardPage } from '@/pages/DashboardPage'
 import { ProductsPage } from '@/pages/ProductsPage'
+import { ResearchPage } from '@/pages/ResearchPage'
 import { OrdersPage } from '@/pages/OrdersPage'
 import { CalculatorPage } from '@/pages/CalculatorPage'
 import { AnalyticsPage } from '@/pages/AnalyticsPage'
 import { TrackingPage } from '@/pages/TrackingPage'
 import { AiScenarioPage } from '@/pages/AiScenarioPage'
 import { SettingsPage } from '@/pages/SettingsPage'
+import { ToastProvider } from '@/components/ui/Toast'
+import { ErrorBoundary } from '@/components/ui/ErrorBoundary'
 
 export default function App() {
   const { user, loading: authLoading, signIn, signUp, signOut } = useAuth()
   const { store, loading: storeLoading, createStore } = useStore(user?.id)
   const { rates: shippingRates, loading: ratesLoading } = useShippingRates(store?.id, store?.marketplace ?? 'Trendyol')
-  const { schedules: commissionSchedules, loading: schedulesLoading } = useCommissionSchedules(store?.id, store?.marketplace ?? 'Trendyol')
+  const {
+    schedules: commissionSchedules,
+    loading: schedulesLoading,
+    activeSchedules,
+    upcomingSchedules,
+    expiredSchedules,
+    createSchedule,
+    updateSchedule,
+    deleteSchedule,
+  } = useCommissionSchedules(store?.id, store?.marketplace ?? 'Trendyol')
   const { products, loading: productsLoading, addProduct, updateProduct, deleteProduct, refetch } =
     useProducts(store?.id, shippingRates, commissionSchedules, store?.marketplace ?? 'Trendyol')
   const { orders, loading: ordersLoading, addOrder, updateOrder, deleteOrder } =
@@ -54,77 +66,91 @@ export default function App() {
   const isLoading = productsLoading || ratesLoading || schedulesLoading
 
   return (
-    <BrowserRouter>
-      <Routes>
-        <Route element={<AppLayout onSignOut={signOut} />}>
-          <Route
-            path="/"
-            element={<DashboardPage products={products} loading={isLoading} currencyRates={currencyRates} />}
-          />
-          <Route
-            path="/products"
-            element={
-              <ProductsPage
-                products={products}
-                loading={isLoading}
-                storeId={store.id}
-                onAdd={addProduct}
-                onUpdate={updateProduct}
-                onDelete={deleteProduct}
-                onRefetch={refetch}
+    <ToastProvider>
+      <ErrorBoundary>
+        <BrowserRouter>
+          <Routes>
+            <Route element={<AppLayout onSignOut={signOut} />}>
+              <Route
+                path="/"
+                element={<DashboardPage products={products} loading={isLoading} currencyRates={currencyRates} />}
               />
-            }
-          />
-          <Route
-            path="/orders"
-            element={
-              <OrdersPage
-                orders={orders}
-                loading={isLoading || ordersLoading}
-                products={products}
-                shippingRates={shippingRates}
-                onAdd={addOrder}
-                onUpdate={updateOrder}
-                onDelete={deleteOrder}
+              <Route
+                path="/products"
+                element={
+                  <ProductsPage
+                    products={products}
+                    loading={isLoading}
+                    storeId={store.id}
+                    onAdd={addProduct}
+                    onUpdate={updateProduct}
+                    onDelete={deleteProduct}
+                    onRefetch={refetch}
+                  />
+                }
               />
-            }
-          />
-          <Route
-            path="/calculator"
-            element={
-              <CalculatorPage
-                shippingRates={shippingRates}
-                commissionSchedules={commissionSchedules}
-                marketplace={store.marketplace}
+              <Route path="/research" element={<ResearchPage />} />
+              <Route
+                path="/orders"
+                element={
+                  <OrdersPage
+                    orders={orders}
+                    loading={isLoading || ordersLoading}
+                    products={products}
+                    shippingRates={shippingRates}
+                    onAdd={addOrder}
+                    onUpdate={updateOrder}
+                    onDelete={deleteOrder}
+                  />
+                }
               />
-            }
-          />
-          <Route
-            path="/analytics"
-            element={<AnalyticsPage products={products} loading={isLoading} />}
-          />
-          <Route
-            path="/tracking"
-            element={<TrackingPage products={products} loading={isLoading} />}
-          />
-          <Route
-            path="/ai-scenario"
-            element={<AiScenarioPage products={products} loading={isLoading} />}
-          />
-          <Route
-            path="/settings"
-            element={
-              <SettingsPage
-                store={store}
-                shippingRates={shippingRates}
-                storeId={store.id}
-                marketplace={store.marketplace}
+              <Route
+                path="/calculator"
+                element={
+                  <CalculatorPage
+                    shippingRates={shippingRates}
+                    commissionSchedules={commissionSchedules}
+                    marketplace={store.marketplace}
+                  />
+                }
               />
-            }
-          />
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Route>
-      </Routes>
-    </BrowserRouter>
+              <Route
+                path="/analytics"
+                element={<AnalyticsPage products={products} loading={isLoading} orders={orders} commissionSchedules={commissionSchedules} storeName={store.name} marketplace={store.marketplace} />}
+              />
+              <Route
+                path="/tracking"
+                element={<TrackingPage products={products} loading={isLoading} />}
+              />
+              <Route
+                path="/ai-scenario"
+                element={<AiScenarioPage products={products} loading={isLoading} />}
+              />
+              <Route
+                path="/settings"
+                element={
+                  <SettingsPage
+                    store={store}
+                    shippingRates={shippingRates}
+                    storeId={store.id}
+                    marketplace={store.marketplace}
+                    commissionSchedules={commissionSchedules}
+                    activeSchedules={activeSchedules}
+                    upcomingSchedules={upcomingSchedules}
+                    expiredSchedules={expiredSchedules}
+                    schedulesLoading={schedulesLoading}
+                    createSchedule={createSchedule}
+                    updateSchedule={updateSchedule}
+                    deleteSchedule={deleteSchedule}
+                    products={products}
+                  />
+                }
+              />
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Route>
+          </Routes>
+        </BrowserRouter>
+      </ErrorBoundary>
+    </ToastProvider>
   )
 }

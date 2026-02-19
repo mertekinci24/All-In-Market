@@ -1,7 +1,10 @@
-import { useState, useEffect } from 'react'
-import { X } from 'lucide-react'
+import { useState, useEffect, useMemo } from 'react'
+import { X, Zap, PackageOpen, RotateCcw, Banknote, TrendingUp, TrendingDown } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
+import { PackagingPopup } from '@/components/products/PackagingPopup'
+import { calculateProfit } from '@/lib/financial-engine'
+import type { CommissionResolution } from '@/lib/financial-engine'
 import type { Database } from '@/types/database'
 
 type ProductRow = Database['public']['Tables']['products']['Row']
@@ -11,6 +14,7 @@ interface ProductModalProps {
   onClose: () => void
   onSave: (data: ProductFormData) => Promise<void>
   product?: ProductRow | null
+  commissionResolution?: CommissionResolution | null
 }
 
 export interface ProductFormData {
@@ -27,6 +31,10 @@ export interface ProductFormData {
   stock_status: string
   category: string
   marketplace_url: string
+  packaging_cost: number
+  packaging_vat_included: boolean
+  return_rate: number
+  service_fee: number
 }
 
 const INITIAL: ProductFormData = {
@@ -43,12 +51,17 @@ const INITIAL: ProductFormData = {
   stock_status: 'InStock',
   category: '',
   marketplace_url: '',
+  packaging_cost: 0,
+  packaging_vat_included: true,
+  return_rate: 0,
+  service_fee: 0,
 }
 
-export function ProductModal({ open, onClose, onSave, product }: ProductModalProps) {
+export function ProductModal({ open, onClose, onSave, product, commissionResolution }: ProductModalProps) {
   const [form, setForm] = useState<ProductFormData>(INITIAL)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const [packagingOpen, setPackagingOpen] = useState(false)
 
   useEffect(() => {
     if (product) {
@@ -66,6 +79,10 @@ export function ProductModal({ open, onClose, onSave, product }: ProductModalPro
         stock_status: product.stock_status,
         category: product.category ?? '',
         marketplace_url: product.marketplace_url ?? '',
+        packaging_cost: product.packaging_cost ?? 0,
+        packaging_vat_included: product.packaging_vat_included ?? true,
+        return_rate: product.return_rate ?? 0,
+        service_fee: product.service_fee ?? 0,
       })
     } else {
       setForm(INITIAL)
@@ -96,7 +113,7 @@ export function ProductModal({ open, onClose, onSave, product }: ProductModalPro
     }
   }
 
-  const set = (field: keyof ProductFormData, value: string | number) =>
+  const set = (field: keyof ProductFormData, value: string | number | boolean) =>
     setForm((prev) => ({ ...prev, [field]: value }))
 
   return (
@@ -190,6 +207,19 @@ export function ProductModal({ open, onClose, onSave, product }: ProductModalPro
             />
           </div>
 
+          {/* Campaign Commission Indicator */}
+          {commissionResolution?.isCampaignActive && product && (
+            <div className="flex items-center gap-2 rounded-lg border border-success-500/20 bg-success-500/5 px-3 py-2 animate-fade-in">
+              <Zap className="h-3.5 w-3.5 text-success-400 shrink-0" />
+              <div className="flex items-center gap-1.5 text-xs">
+                <span className="text-gray-500 line-through">%{Math.round(product.commission_rate * 100)}</span>
+                <span className="text-gray-500">→</span>
+                <span className="font-semibold text-success-400">%{Math.round(commissionResolution.rate * 100)}</span>
+                <span className="text-gray-400 ml-1">({commissionResolution.campaignName})</span>
+              </div>
+            </div>
+          )}
+
           <div className="grid grid-cols-3 gap-3">
             <Input
               label="Kargo (TL)"
@@ -213,6 +243,58 @@ export function ProductModal({ open, onClose, onSave, product }: ProductModalPro
               placeholder="0"
             />
           </div>
+
+          {/* Advanced Cost Fields */}
+          <div className="rounded-lg border border-white/5 bg-surface-800/20 p-3 space-y-3">
+            <p className="text-[11px] font-medium text-gray-500 uppercase tracking-wider">Gelişmiş Gider Katmanları</p>
+
+            {/* Packaging */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <PackageOpen className="h-3.5 w-3.5 text-amber-400" />
+                <span className="text-xs text-gray-400">Paketleme</span>
+                {form.packaging_cost > 0 && (
+                  <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-400 tabular-nums">
+                    {form.packaging_cost.toLocaleString('tr-TR')} TL
+                  </span>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => setPackagingOpen(true)}
+                className="rounded-md border border-white/5 bg-surface-800/50 px-2.5 py-1 text-[11px] text-gray-400 transition-all hover:border-amber-500/20 hover:text-amber-300"
+              >
+                {form.packaging_cost > 0 ? 'Düzenle' : 'Ekle'}
+              </button>
+            </div>
+
+            {/* Return Rate + Service Fee */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="relative">
+                <Input
+                  label="İade Oranı (%)"
+                  type="number"
+                  value={form.return_rate || ''}
+                  onChange={(e) => set('return_rate', parseFloat(e.target.value) || 0)}
+                  placeholder="0"
+                />
+                <RotateCcw className="absolute top-[1px] right-0 h-3 w-3 text-gray-600" />
+              </div>
+              <div className="relative">
+                <Input
+                  label="Hizmet Bedeli (TL)"
+                  type="number"
+                  value={form.service_fee || ''}
+                  onChange={(e) => set('service_fee', parseFloat(e.target.value) || 0)}
+                  placeholder="0"
+                />
+                <Banknote className="absolute top-[1px] right-0 h-3 w-3 text-gray-600" />
+              </div>
+            </div>
+          </div>
+
+          {/* Live Margin Preview */}
+          <LiveMarginPreview form={form} commissionRate={commissionResolution?.rate ?? form.commission_rate} />
 
           <div className="grid grid-cols-2 gap-3">
             <Input
@@ -238,6 +320,71 @@ export function ProductModal({ open, onClose, onSave, product }: ProductModalPro
             {saving ? 'Kaydediliyor...' : product ? 'Guncelle' : 'Ekle'}
           </Button>
         </div>
+      </div>
+
+      {/* Packaging Popup */}
+      <PackagingPopup
+        open={packagingOpen}
+        onClose={() => setPackagingOpen(false)}
+        onSave={(totalCost, vatIncluded) => {
+          set('packaging_cost', totalCost)
+          set('packaging_vat_included', vatIncluded)
+        }}
+        initialCost={form.packaging_cost}
+        initialVatIncluded={form.packaging_vat_included}
+      />
+    </div>
+  )
+}
+
+/* ------------------------------------------------------------------ */
+/*  Live Margin Preview                                                */
+/* ------------------------------------------------------------------ */
+
+function LiveMarginPreview({ form, commissionRate }: { form: ProductFormData; commissionRate: number }) {
+  const result = useMemo(() => {
+    if (form.sales_price <= 0 || form.buy_price <= 0) return null
+    return calculateProfit({
+      salesPrice: form.sales_price,
+      buyPrice: form.buy_price,
+      commissionRate,
+      vatRate: form.vat_rate,
+      desi: form.desi,
+      shippingCost: form.shipping_cost,
+      extraCost: form.extra_cost,
+      adCost: form.ad_cost,
+      packagingCost: form.packaging_cost,
+      packagingVatIncluded: form.packaging_vat_included,
+      returnRate: form.return_rate,
+      serviceFee: form.service_fee,
+    })
+  }, [form, commissionRate])
+
+  if (!result) return null
+
+  const isProfit = result.netProfit >= 0
+
+  return (
+    <div className={`flex items-center justify-between rounded-lg border px-3 py-2 animate-fade-in transition-colors ${isProfit
+        ? 'border-success-500/20 bg-success-500/5'
+        : 'border-danger-500/20 bg-danger-500/5'
+      }`}>
+      <div className="flex items-center gap-2">
+        {isProfit ? (
+          <TrendingUp className="h-3.5 w-3.5 text-success-400" />
+        ) : (
+          <TrendingDown className="h-3.5 w-3.5 text-danger-400" />
+        )}
+        <span className="text-xs text-gray-400">Tahmini Kar</span>
+      </div>
+      <div className="flex items-center gap-3">
+        <span className={`text-sm font-semibold tabular-nums ${isProfit ? 'text-success-400' : 'text-danger-400'}`}>
+          {isProfit ? '+' : ''}{result.netProfit.toLocaleString('tr-TR')} TL
+        </span>
+        <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${isProfit ? 'bg-success-500/10 text-success-400' : 'bg-danger-500/10 text-danger-400'
+          }`}>
+          %{result.margin}
+        </span>
       </div>
     </div>
   )

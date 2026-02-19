@@ -40,6 +40,10 @@ export interface ProfitInput {
   shippingCost: number
   extraCost: number
   adCost: number
+  packagingCost?: number
+  packagingVatIncluded?: boolean
+  returnRate?: number
+  serviceFee?: number
 }
 
 const FALLBACK_DESI_RATES: ShippingRate[] = [
@@ -102,13 +106,43 @@ export function getDesiShippingCost(desi: number, rates?: ShippingRate[]): numbe
   return match ?? 9.99
 }
 
+/** Factor applied to return cost: covers outbound + return shipping */
+const RETURN_SHIPPING_FACTOR = 2
+
 export function calculateProfit(input: ProfitInput): ProfitResult {
-  const { salesPrice, buyPrice, commissionRate, vatRate, shippingCost, extraCost, adCost } = input
+  // Guard: sanitize all inputs — prevent NaN / negative / undefined propagation
+  const safe = (v: number | undefined | null) => {
+    const n = Number(v)
+    return isNaN(n) || !isFinite(n) ? 0 : n
+  }
+
+  const salesPrice = Math.max(0, safe(input.salesPrice))
+  const buyPrice = Math.max(0, safe(input.buyPrice))
+  const commissionRate = Math.min(1, Math.max(0, safe(input.commissionRate)))
+  const vatRate = Math.max(0, safe(input.vatRate))
+  const shippingCost = Math.max(0, safe(input.shippingCost))
+  const extraCost = Math.max(0, safe(input.extraCost))
+  const adCost = Math.max(0, safe(input.adCost))
+  const packagingCost = Math.max(0, safe(input.packagingCost))
+  const packagingVatIncluded = input.packagingVatIncluded ?? true
+  const returnRate = Math.min(100, Math.max(0, safe(input.returnRate)))
+  const serviceFee = Math.max(0, safe(input.serviceFee))
 
   const vatMultiplier = 1 + vatRate / 100
   const vat = salesPrice - salesPrice / vatMultiplier
   const commission = salesPrice * commissionRate
+
+  // Packaging: if VAT not included, add 20% KDV
+  const packagingAdjusted = packagingVatIncluded
+    ? packagingCost
+    : packagingCost * 1.20
+
+  // Return cost: expected loss from returns
+  const returnCost = salesPrice * (returnRate / 100) * RETURN_SHIPPING_FACTOR
+
   const totalCost = buyPrice + vat + commission + shippingCost + extraCost + adCost
+    + packagingAdjusted + serviceFee + returnCost
+
   const netProfit = salesPrice - totalCost
   const margin = salesPrice > 0 ? (netProfit / salesPrice) * 100 : 0
   const roi = buyPrice > 0 ? (netProfit / buyPrice) * 100 : 0
@@ -121,6 +155,9 @@ export function calculateProfit(input: ProfitInput): ProfitResult {
     shippingCost,
     extraCost,
     adCost,
+    packagingCost: Math.round(packagingAdjusted * 100) / 100,
+    returnCost: Math.round(returnCost * 100) / 100,
+    serviceFee,
     totalCost: Math.round(totalCost * 100) / 100,
     netProfit: Math.round(netProfit * 100) / 100,
     margin: Math.round(margin * 10) / 10,
@@ -184,5 +221,127 @@ export function resolveCommissionRate(
     isCampaignActive: false,
     sellerDiscountShare: 1,
     marketplaceDiscountShare: 0,
+  }
+}
+export interface ScoreInput {
+  // Profitability
+  netMargin: number
+  roi: number
+
+  // Demand
+  estMonthlySales: number
+  reviewVelocity: number // Used as proxy for Trend Momentum if specific trend data missing
+  searchVolume: number
+
+  // Competition
+  reviewCount: number
+  sellerCount: number // Market Density
+  avgRating: number // Listing Quality proxy
+  bsr: number // BSR Stability proxy (lower is better generally)
+
+  // Operational
+  returnRate?: number
+  desi: number
+}
+
+export class OpportunityScoreEngine {
+  private calculateSCurve(value: number, midpoint: number, steepness: number): number {
+    return 1 / (1 + Math.exp(-steepness * (value - midpoint)))
+  }
+
+  private normalize(value: number, target: number, type: 'higher-better' | 'lower-better', sensitivity: number = 0.5): number {
+    // Adjust steepness based on target magnitude
+    const steepness = sensitivity / (target * 0.1 || 1)
+    const curve = this.calculateSCurve(value, target, steepness)
+    return type === 'higher-better' ? curve : 1 - curve
+  }
+
+  public calculate(input: ScoreInput) {
+    let score = 0
+    const details: Record<string, number> = {}
+
+    // 1. Profitability (30%)
+    // Net Margin (20%): Target 25%
+    const scoreMargin = this.normalize(input.netMargin, 25, 'higher-better', 0.8) * 10
+    score += scoreMargin * 0.20
+    details['margin'] = scoreMargin
+
+    // ROI (10%): Target 100%
+    const scoreROI = this.normalize(input.roi, 100, 'higher-better', 0.5) * 10
+    score += scoreROI * 0.10
+    details['roi'] = scoreROI
+
+    // 2. Demand (30%)
+    // Est. Sales (15%): Target 300
+    const scoreSales = this.normalize(input.estMonthlySales, 300, 'higher-better', 0.5) * 10
+    score += scoreSales * 0.15
+    details['sales'] = scoreSales
+
+    // Trend (Review Velocity) (10%): Target 20/month (Positive momentum)
+    const scoreTrend = this.normalize(input.reviewVelocity, 20, 'higher-better', 4) * 10
+    score += scoreTrend * 0.10
+    details['trend'] = scoreTrend
+
+    // Search Volume (5%): Target 5000 (High Volume)
+    const scoreVol = this.normalize(input.searchVolume, 5000, 'higher-better', 0.5) * 10
+    score += scoreVol * 0.05
+    details['volume'] = scoreVol
+
+    // 3. Competition (30%)
+    // Review Count (10%): Target < 50
+    const scoreReviews = this.normalize(input.reviewCount, 50, 'lower-better', 0.5) * 10
+    score += scoreReviews * 0.10
+    details['reviews'] = scoreReviews
+
+    // Market Density (Sellers) (10%): Target < 3 (Low Monopoly)
+    const scoreDensity = this.normalize(input.sellerCount, 3, 'lower-better', 5) * 10
+    score += scoreDensity * 0.10
+    details['density'] = scoreDensity
+
+    // Listing Quality (Rating) (5%): Target < 4.0 (Opportunity to beat) -> Actually if existing lists are bad (low rating), it's good for us.
+    // "Low A+ Rate" implies we want "Low Quality Competitors".
+    // So Normalized Rating: Lower is better for Opportunity.
+    const scoreQuality = this.normalize(input.avgRating, 4.0, 'lower-better', 4) * 10
+    score += scoreQuality * 0.05
+    details['quality'] = scoreQuality
+
+    // BSR (5%): Lower BSR is better generally (more stable sales often), but implies high competition.
+    // However, for "Stability", we ideally want data variance.
+    // Without variance data, we assume Lower BSR = Higher Comp = Lower Score?
+    // User Guide: "BSR Stability - Low Fluctuation".
+    // If we only have BSR snapshot, we make a simplified assumption:
+    // If BSR is very high (>50k), it's unstable/low demand.
+    // If BSR is very low (<100), it's hyper competitive.
+    // Sweet spot is 1000-10000?
+    // Let's simplified treat as: Lower BSR = Higher Demand (Good) but we already track Demand via Sales.
+    // Let's use BSR here as "Competitor Strength". Strong BSR = Hard to Enter.
+    // So Higher BSR = Better Opportunity (Easier to enter)? Or Lower?
+    // "Opportunity Score" usually means "Is this a good product to LAUNCH?".
+    // If competitors have High Sales (Low BSR), demand is proven.
+    // But Complexity/Diffculty is high.
+    // Let's stick to user prompt: "Competition... BSR Stability". 
+    // Since we lack stability/history data in simple input, let's use BSR magnitude as proxy for "Entrenchment".
+    // Low BSR (Rank 1) = Very Entrenched = Lower Opportunity Score (Harder).
+    // Target BSR > 2000 implies "some room".
+    const scoreBSR = this.normalize(input.bsr, 2000, 'higher-better', 0.5) * 10
+    score += scoreBSR * 0.05
+    details['bsr_score'] = scoreBSR
+
+    // 4. Operational (10%)
+    // Return Rate (5%): Target < 3%
+    const rRate = input.returnRate ?? 2 // Default 2%
+    const scoreReturn = this.normalize(rRate, 3, 'lower-better', 2) * 10
+    score += scoreReturn * 0.05
+    details['return_rate'] = scoreReturn
+
+    // Logistics (Desi) (5%): Target < 2 (Small/Light)
+    const scoreDesi = this.normalize(input.desi, 2, 'lower-better', 2) * 10
+    score += scoreDesi * 0.05
+    details['desi_score'] = scoreDesi
+
+    return {
+      total: Math.min(10, Math.max(1, Number(score.toFixed(1)))),
+      details
+    }
   }
 }

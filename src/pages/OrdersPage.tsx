@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react'
+import { useToast } from '@/components/ui/Toast'
 import {
   Plus, Search, Pencil, Trash2, ChevronLeft, ChevronRight, X,
   ShoppingCart, Eye, ChevronDown,
@@ -60,6 +61,7 @@ const STATUS_VARIANTS: Record<string, 'success' | 'danger' | 'warning' | 'neutra
 const PAGE_SIZE = 15
 
 export function OrdersPage({ orders, loading, products, shippingRates, onAdd, onUpdate, onDelete }: OrdersPageProps) {
+  const toast = useToast()
   const [search, setSearch] = useState('')
   const [statusTab, setStatusTab] = useState<StatusTab>('all')
   const [page, setPage] = useState(0)
@@ -133,16 +135,22 @@ export function OrdersPage({ orders, loading, products, shippingRates, onAdd, on
     }))
 
     if (editOrder) {
-      await onUpdate(editOrder.id, orderPayload, itemPayload)
+      const result = await onUpdate(editOrder.id, orderPayload, itemPayload)
+      if (result) toast.addToast('success', 'Sipariş güncellendi')
+      else toast.addToast('error', 'Sipariş güncellenirken hata oluştu')
     } else {
-      await onAdd(orderPayload, itemPayload)
+      const result = await onAdd(orderPayload, itemPayload)
+      if (result) toast.addToast('success', 'Yeni sipariş eklendi')
+      else toast.addToast('error', 'Sipariş eklenirken hata oluştu')
     }
   }
 
   const handleDelete = async () => {
     if (!deleteTarget) return
     setDeleting(true)
-    await onDelete(deleteTarget.id)
+    const success = await onDelete(deleteTarget.id)
+    if (success) toast.addToast('success', 'Sipariş silindi')
+    else toast.addToast('error', 'Sipariş silinirken hata oluştu')
     setDeleting(false)
     setDeleteTarget(null)
   }

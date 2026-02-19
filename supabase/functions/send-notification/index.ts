@@ -1,5 +1,5 @@
-import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-import { createClient } from "npm:@supabase/supabase-js@2.95.3";
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -14,7 +14,7 @@ interface TelegramPayload {
   botToken?: string;
   chatId?: string;
   message?: string;
-  alertType?: "price_drop" | "margin_warning" | "stock_change" | "competitor_change";
+  alertType?: "price_drop" | "margin_warning" | "stock_change" | "competitor_change" | "stockout_risk" | "price_war" | "review_spike";
   productName?: string;
   details?: Record<string, string | number>;
 }
@@ -27,6 +27,9 @@ function buildAlertMessage(payload: TelegramPayload): string {
     margin_warning: "⚠️",
     stock_change: "📦",
     competitor_change: "🔍",
+    stockout_risk: "🔻",
+    price_war: "⚔️",
+    review_spike: "🌟",
   };
 
   const titles: Record<string, string> = {
@@ -34,6 +37,9 @@ function buildAlertMessage(payload: TelegramPayload): string {
     margin_warning: "Marj Uyarısı",
     stock_change: "Stok Değişikliği",
     competitor_change: "Rakip Fiyat Değişikliği",
+    stockout_risk: "Kritik Stok Riski",
+    price_war: "Fiyat Savaşı Başladı",
+    review_spike: "Yorum Patlaması",
   };
 
   const icon = icons[alertType ?? "price_drop"] ?? "🔔";
@@ -81,7 +87,7 @@ async function sendTelegram(
   return { ok: true };
 }
 
-Deno.serve(async (req: Request) => {
+serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 200, headers: corsHeaders });
   }
@@ -188,7 +194,11 @@ Deno.serve(async (req: Request) => {
         (payload.alertType === "price_drop" && settings.notify_price_drop) ||
         (payload.alertType === "margin_warning" && settings.notify_margin_warning) ||
         (payload.alertType === "stock_change" && settings.notify_stock_change) ||
-        (payload.alertType === "competitor_change" && settings.notify_competitor_change);
+        (payload.alertType === "competitor_change" && settings.notify_competitor_change) ||
+        // Auto-enable tactical alerts if competitor tracking is on, or generic price drops
+        (payload.alertType === "stockout_risk" && settings.notify_stock_change) ||
+        (payload.alertType === "price_war" && settings.notify_price_drop) ||
+        (payload.alertType === "review_spike" && settings.notify_competitor_change);
 
       if (!shouldNotify) {
         return new Response(

@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react'
+import { useToast } from '@/components/ui/Toast'
 import {
   Plus, Search, Pencil, Trash2, ArrowUpDown,
   ChevronLeft, ChevronRight, ChevronDown, X, SlidersHorizontal, Package,
@@ -34,6 +35,7 @@ type ProfitFilter = 'all' | 'profitable' | 'loss'
 const PAGE_SIZE = 15
 
 export function ProductsPage({ products, loading, onAdd, onUpdate, onDelete }: ProductsPageProps) {
+  const toast = useToast()
   const [search, setSearch] = useState('')
   const [modalOpen, setModalOpen] = useState(false)
   const [editProduct, setEditProduct] = useState<ProductRow | null>(null)
@@ -148,16 +150,22 @@ export function ProductsPage({ products, loading, onAdd, onUpdate, onDelete }: P
       marketplace_url: data.marketplace_url || null,
     }
     if (editProduct) {
-      await onUpdate(editProduct.id, payload)
+      const result = await onUpdate(editProduct.id, payload)
+      if (result) toast.addToast('success', 'Ürün güncellendi')
+      else toast.addToast('error', 'Ürün güncellenirken hata oluştu')
     } else {
-      await onAdd(payload)
+      const result = await onAdd(payload)
+      if (result) toast.addToast('success', 'Yeni ürün eklendi')
+      else toast.addToast('error', 'Ürün eklenirken hata oluştu')
     }
   }
 
   const handleDelete = async () => {
     if (!deleteTarget) return
     setDeleting(true)
-    await onDelete(deleteTarget.id)
+    const success = await onDelete(deleteTarget.id)
+    if (success) toast.addToast('success', 'Ürün silindi')
+    else toast.addToast('error', 'Ürün silinirken hata oluştu')
     setDeleting(false)
     setDeleteTarget(null)
   }
@@ -311,6 +319,11 @@ export function ProductsPage({ products, loading, onAdd, onUpdate, onDelete }: P
                           <p className="text-sm font-medium text-gray-200 truncate max-w-[200px]">{product.name}</p>
                           {product.external_id && (
                             <p className="text-[11px] text-gray-600 mt-0.5">{product.external_id}</p>
+                          )}
+                          {product.commissionResolution?.isCampaignActive && (
+                            <span className="mt-0.5 inline-flex items-center gap-1 rounded-md bg-success-500/10 border border-success-500/20 px-1.5 py-0.5 text-[10px] font-medium text-success-400">
+                              ⚡ {product.commissionResolution.campaignName || 'Kampanya'}
+                            </span>
                           )}
                         </td>
                         <td className="px-4 py-3">

@@ -6,9 +6,13 @@ import { TelegramSettings } from '@/components/settings/TelegramSettings'
 import { BrowserNotifSettings } from '@/components/settings/BrowserNotifSettings'
 import { AlertPreferences } from '@/components/settings/AlertPreferences'
 import { ShippingBaremSettings } from '@/components/settings/ShippingBaremSettings'
+import { CommissionScheduleSettings } from '@/components/settings/CommissionScheduleSettings'
+import { ServiceFeeSettings } from '@/components/settings/ServiceFeeSettings'
 import { useNotifications } from '@/hooks/useNotifications'
 import { Shield, Store, Key } from 'lucide-react'
 import type { Database } from '@/types/database'
+import type { CommissionSchedule } from '@/lib/financial-engine'
+import type { ProductWithProfit } from '@/hooks/useProducts'
 
 type StoreRow = Database['public']['Tables']['stores']['Row']
 
@@ -17,6 +21,15 @@ interface SettingsPageProps {
   shippingRates: unknown[]
   storeId: string
   marketplace: string
+  commissionSchedules: CommissionSchedule[]
+  activeSchedules: CommissionSchedule[]
+  upcomingSchedules: CommissionSchedule[]
+  expiredSchedules: CommissionSchedule[]
+  schedulesLoading: boolean
+  createSchedule: (schedule: Omit<Database['public']['Tables']['commission_schedules']['Insert'], 'store_id' | 'marketplace'>) => Promise<unknown>
+  updateSchedule: (id: string, updates: Database['public']['Tables']['commission_schedules']['Update']) => Promise<unknown>
+  deleteSchedule: (id: string) => Promise<boolean>
+  products: ProductWithProfit[]
 }
 
 const MARKETPLACE_LABELS: Record<string, string> = {
@@ -25,7 +38,11 @@ const MARKETPLACE_LABELS: Record<string, string> = {
   amazon_tr: 'Amazon TR',
 }
 
-export function SettingsPage({ store, storeId, marketplace }: SettingsPageProps) {
+export function SettingsPage({
+  store, storeId, marketplace,
+  commissionSchedules, activeSchedules, upcomingSchedules, expiredSchedules,
+  schedulesLoading, createSchedule, updateSchedule, deleteSchedule, products,
+}: SettingsPageProps) {
   const {
     settings: notifSettings,
     loading: notifLoading,
@@ -60,6 +77,23 @@ export function SettingsPage({ store, storeId, marketplace }: SettingsPageProps)
         </Card>
 
         <ShippingBaremSettings storeId={storeId} marketplace={marketplace} />
+
+        <ServiceFeeSettings
+          currentMarketplace={marketplace}
+          currentFee={0}
+        />
+
+        <CommissionScheduleSettings
+          schedules={commissionSchedules}
+          activeSchedules={activeSchedules}
+          upcomingSchedules={upcomingSchedules}
+          expiredSchedules={expiredSchedules}
+          products={products}
+          loading={schedulesLoading}
+          onCreate={createSchedule}
+          onUpdate={updateSchedule}
+          onDelete={deleteSchedule}
+        />
 
         <Card>
           <CardHeader

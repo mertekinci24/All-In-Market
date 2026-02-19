@@ -1,4 +1,12 @@
-export type Database = {
+export type Json =
+  | string
+  | number
+  | boolean
+  | null
+  | { [key: string]: Json | undefined }
+  | Json[]
+
+export interface Database {
   public: {
     Tables: {
       stores: {
@@ -51,6 +59,11 @@ export type Database = {
           category: string | null
           marketplace_url: string | null
           last_scraped: string | null
+          packaging_cost: number
+          packaging_vat_included: boolean
+          return_rate: number
+          logistics_type: string
+          service_fee: number
           created_at: string
           updated_at: string
         }
@@ -73,6 +86,11 @@ export type Database = {
           category?: string | null
           marketplace_url?: string | null
           last_scraped?: string | null
+          packaging_cost?: number
+          packaging_vat_included?: boolean
+          return_rate?: number
+          logistics_type?: string
+          service_fee?: number
           created_at?: string
           updated_at?: string
         }
@@ -95,6 +113,11 @@ export type Database = {
           category?: string | null
           marketplace_url?: string | null
           last_scraped?: string | null
+          packaging_cost?: number
+          packaging_vat_included?: boolean
+          return_rate?: number
+          logistics_type?: string
+          service_fee?: number
           created_at?: string
           updated_at?: string
         }
@@ -102,12 +125,12 @@ export type Database = {
           {
             foreignKeyName: "products_store_id_fkey"
             columns: ["store_id"]
-            isOneToOne: false
             referencedRelation: "stores"
             referencedColumns: ["id"]
           }
         ]
-      }
+      },
+
       price_snapshots: {
         Row: {
           id: string
@@ -145,7 +168,7 @@ export type Database = {
             referencedColumns: ["id"]
           }
         ]
-      }
+      },
       shipping_rates: {
         Row: {
           id: string
@@ -195,7 +218,7 @@ export type Database = {
             referencedColumns: ["id"]
           }
         ]
-      }
+      },
       orders: {
         Row: {
           id: string
@@ -341,6 +364,7 @@ export type Database = {
           notify_competitor_change: boolean
           margin_threshold: number
           price_change_threshold: number
+          stock_threshold: number // NEW
           created_at: string
           updated_at: string
         }
@@ -357,6 +381,7 @@ export type Database = {
           notify_competitor_change?: boolean
           margin_threshold?: number
           price_change_threshold?: number
+          stock_threshold?: number // NEW
           created_at?: string
           updated_at?: string
         }
@@ -373,6 +398,7 @@ export type Database = {
           notify_competitor_change?: boolean
           margin_threshold?: number
           price_change_threshold?: number
+          stock_threshold?: number // NEW
           created_at?: string
           updated_at?: string
         }
@@ -451,7 +477,306 @@ export type Database = {
             referencedColumns: ["id"]
           }
         ]
+      },
+      product_mining: {
+        Row: {
+          id: string
+          store_id: string
+          marketplace: string
+          asin: string
+          title: string
+          image_url: string | null
+          current_price: number | null
+          opportunity_score: number
+          notes: string
+          is_tracked: boolean
+          ai_analysis: {
+            summary: string
+            sentiment: { pos: number; neg: number; neu: number }
+            themes: string[]
+            last_updated: string
+          } | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          store_id: string
+          marketplace: string
+          asin: string
+          title: string
+          image_url?: string | null
+          current_price?: number | null
+          opportunity_score?: number
+          notes?: string
+          is_tracked?: boolean
+          ai_analysis?: {
+            summary: string
+            sentiment: { pos: number; neg: number; neu: number }
+            themes: string[]
+            last_updated: string
+          } | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          store_id?: string
+          marketplace?: string
+          asin?: string
+          title?: string
+          image_url?: string | null
+          current_price?: number | null
+          opportunity_score?: number
+          notes?: string
+          is_tracked?: boolean
+          ai_analysis?: {
+            summary: string
+            sentiment: { pos: number; neg: number; neu: number }
+            themes: string[]
+            last_updated: string
+          } | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "product_mining_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "stores"
+            referencedColumns: ["id"]
+          }
+        ]
+      },
+      keyword_data: {
+        Row: {
+          id: string
+          store_id: string
+          keyword: string
+          search_volume: number
+          cpc: number
+          difficulty: number
+          opportunity_score: number
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          store_id: string
+          keyword: string
+          search_volume?: number
+          cpc?: number
+          difficulty?: number
+          opportunity_score?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          store_id?: string
+          keyword?: string
+          search_volume?: number
+          cpc?: number
+          difficulty?: number
+          opportunity_score?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "keyword_data_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "stores"
+            referencedColumns: ["id"]
+          }
+        ]
+      },
+      market_metrics: {
+        Row: {
+          id: string
+          product_mining_id: string
+          snapshot_date: string
+          bsr: number | null
+          review_count: number | null
+          rating: number | null
+          price: number | null
+          est_monthly_sales: number | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          product_mining_id: string
+          snapshot_date?: string
+          bsr?: number | null
+          review_count?: number | null
+          rating?: number | null
+          price?: number | null
+          est_monthly_sales?: number | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          product_mining_id?: string
+          snapshot_date?: string
+          bsr?: number | null
+          review_count?: number | null
+          rating?: number | null
+          price?: number | null
+          est_monthly_sales?: number | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "market_metrics_product_mining_id_fkey"
+            columns: ["product_mining_id"]
+            isOneToOne: false
+            referencedRelation: "product_mining"
+            referencedColumns: ["id"]
+          }
+        ]
+      },
+      variant_analysis: {
+        Row: {
+          id: string
+          product_mining_id: string
+          variant_name: string
+          review_count: number
+          review_share: number
+          est_monthly_sales: number
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          product_mining_id: string
+          variant_name: string
+          review_count?: number
+          review_share?: number
+          est_monthly_sales?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          product_mining_id?: string
+          variant_name?: string
+          review_count?: number
+          review_share?: number
+          est_monthly_sales?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "variant_analysis_product_mining_id_fkey"
+            columns: ["product_mining_id"]
+            isOneToOne: false
+            referencedRelation: "product_mining"
+            referencedColumns: ["id"]
+          }
+        ]
+      },
+      keyword_tracking: {
+        Row: {
+          id: string
+          product_id: string | null
+          product_mining_id: string | null
+          keyword: string
+          rank: number | null
+          search_volume_est: number | null
+          is_indexed: boolean | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          product_id?: string | null
+          product_mining_id?: string | null
+          keyword: string
+          rank?: number | null
+          search_volume_est?: number | null
+          is_indexed?: boolean | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          product_id?: string | null
+          product_mining_id?: string | null
+          keyword?: string
+          rank?: number | null
+          search_volume_est?: number | null
+          is_indexed?: boolean | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "keyword_tracking_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "keyword_tracking_product_mining_id_fkey"
+            columns: ["product_mining_id"]
+            isOneToOne: false
+            referencedRelation: "product_mining"
+            referencedColumns: ["id"]
+          }
+        ]
+      },
+      market_opportunities: {
+        Row: {
+          id: string
+          product_id: string
+          opportunity_score: number | null
+          difficulty_score: number | null
+          metrics_json: Json | null
+          ai_insight: string | null
+          est_monthly_sales: number | null
+          seasonality_forecast: Json | null
+          forecast_confidence: number | null
+          forecast_generated_at: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          product_id: string
+          opportunity_score?: number | null
+          difficulty_score?: number | null
+          metrics_json?: Json | null
+          ai_insight?: string | null
+          est_monthly_sales?: number | null
+          seasonality_forecast?: Json | null
+          forecast_confidence?: number | null
+          forecast_generated_at?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          product_id?: string
+          opportunity_score?: number | null
+          difficulty_score?: number | null
+          metrics_json?: Json | null
+          ai_insight?: string | null
+          est_monthly_sales?: number | null
+          seasonality_forecast?: Json | null
+          forecast_confidence?: number | null
+          forecast_generated_at?: string | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "market_opportunities_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          }
+        ]
       }
+
     }
     Views: Record<string, never>
     Functions: Record<string, never>
