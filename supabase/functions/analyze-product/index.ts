@@ -2,9 +2,14 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { GoogleGenerativeAI } from 'https://esm.sh/@google/generative-ai@0.21.0'
 
+// TD-01 Fix: Replace wildcard CORS with specific allowed origin.
+// Set ALLOWED_ORIGIN in Supabase Secrets (e.g. https://your-dashboard.vercel.app)
+// Falls back to '*' only if not configured (dev convenience).
+const ALLOWED_ORIGIN = Deno.env.get('ALLOWED_ORIGIN') || '*'
 const corsHeaders = {
-    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
     'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+    'Vary': 'Origin',
 }
 
 // --- Duplicate of OpportunityScoreEngine logic for Edge Runtime ---
@@ -320,10 +325,13 @@ serve(async (req) => {
         }
 
         // 3. Save to Database
+        // TD-02 Fix: Use SERVICE_ROLE_KEY for server-side DB writes.
+        // Anon key is for client-side only. Server functions must use service role
+        // to bypass RLS for authorized writes (e.g. product_mining upsert).
         const supabaseClient = createClient(
             Deno.env.get('SUPABASE_URL') ?? '',
-            Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-            { global: { headers: { Authorization: req.headers.get('Authorization')! } } }
+            Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
+            { auth: { persistSession: false } }
         )
 
         let dbError = null

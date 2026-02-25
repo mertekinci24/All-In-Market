@@ -5,6 +5,14 @@
 /* ------------------------------------------------------------------ */
 
 (async function trendyolParser() {
+    // SPA Navigation Guard (TD-11 Fix): Prevent parser from running multiple times
+    // on Trendyol's SPA as URL changes do not reload the content script.
+    if (window.__SKY_PARSER_INITIALIZED__) {
+        console.log('[SKY Parser] Already initialized for this page context, skipping.');
+        return;
+    }
+    window.__SKY_PARSER_INITIALIZED__ = true;
+
     // LOUD DEBUG LOG
     console.log('%c [SKY] PARSER BAŞLATILDI - Lütfen bu mesajı görüyor musunuz?', 'background: #00b26e; color: white; font-size: 16px; padding: 4px; border-radius: 4px;');
     const LOG_PREFIX = '[SKY Parser]';
@@ -99,14 +107,17 @@
     /* ---------------------------------------------------------------- */
     /*  Deep Scan Helpers                                                 */
     /* ---------------------------------------------------------------- */
-    function findKeyRecursive(obj, targetKey) {
+    // TD-09 Fix: Added `visited` Set to prevent infinite loops on circular JSON refs.
+    function findKeyRecursive(obj, targetKey, visited = new Set()) {
         if (!obj || typeof obj !== 'object') return null;
+        if (visited.has(obj)) return null; // Cycle detected — bail out
+        visited.add(obj);
 
         if (obj[targetKey]) return obj[targetKey];
 
         for (const key in obj) {
             if (Object.prototype.hasOwnProperty.call(obj, key)) {
-                const result = findKeyRecursive(obj[key], targetKey);
+                const result = findKeyRecursive(obj[key], targetKey, visited);
                 if (result) return result;
             }
         }
