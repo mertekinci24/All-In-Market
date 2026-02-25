@@ -10,6 +10,12 @@
         "storage",
         "activeTab"
     ],
+    "externally_connectable": {
+        "matches": [
+            "http://localhost:5173/*",
+            "https://sky-market-dashboard.vercel.app/*"
+        ]
+    },
     "host_permissions": [
         "http://localhost:5173/*",
         "https://sky-market-dashboard.vercel.app/*",

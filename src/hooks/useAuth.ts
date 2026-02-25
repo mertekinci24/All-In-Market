@@ -14,18 +14,28 @@ import { supabase } from '@/lib/supabase'
  * ----------------------------------------------------------------------- */
 const EXTENSION_ID = import.meta.env.VITE_EXTENSION_ID as string | undefined
 
-function sendExtensionMessage(message: object): void {
+function sendExtensionMessage(message: object, retryCount = 0): void {
   try {
     const extId = EXTENSION_ID
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const cr = (window as any).chrome
     if (!extId || !cr?.runtime?.sendMessage) return
+
     cr.runtime.sendMessage(extId, message, (response: unknown) => {
-      // Suppress cross-extension errors (extension not installed, wrong ID, etc.)
-      if ((cr.runtime as { lastError?: { message: string } }).lastError) {
-        console.warn('[Sky Dashboard] Extension not reachable:', (cr.runtime as { lastError?: { message: string } }).lastError!.message)
+      const lastError = (cr.runtime as { lastError?: { message: string } }).lastError
+      if (lastError) {
+        const errMsg = lastError.message ?? ''
+        // "Receiving end does not exist" = Service Worker sleeping or not yet loaded.
+        // Retry up to 3 times (2s → 5s → give up) to handle cold-start latency.
+        if (errMsg.includes('Receiving end') && retryCount < 2) {
+          const delay = retryCount === 0 ? 2000 : 5000
+          console.warn(`[Sky Dashboard] Extension not ready, retrying in ${delay}ms... (attempt ${retryCount + 1}/2)`)
+          setTimeout(() => sendExtensionMessage(message, retryCount + 1), delay)
+        } else {
+          console.warn('[Sky Dashboard] Extension not reachable:', errMsg)
+        }
       } else {
-        console.log('[Sky Dashboard] Extension sync →', message, '← Response:', response)
+        console.log('[Sky Dashboard] Extension sync ✓', (message as Record<string, unknown>).type, '← Response:', response)
       }
     })
   } catch {

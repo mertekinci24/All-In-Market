@@ -915,3 +915,62 @@ chrome.runtime.onInstalled.addListener(() => {
     console.log('[SKY] Sky-Market Live Intelligence installed');
     chrome.action.setBadgeText({ text: '' });
 });
+
+/* ------------------------------------------------------------------ */
+/*  V1.4.5: External Message Bridge (Dashboard → Extension)            */
+/* ------------------------------------------------------------------ */
+/*  This listener handles messages from the Sky-Market Dashboard web   */
+/*  app (localhost or Vercel) via chrome.runtime.sendMessage(EXT_ID).  */
+/*                                                                      */
+/*  REQUIRES: manifest.json "externally_connectable" → matches list.   */
+/*  WITHOUT this listener, the channel closes immediately and the       */
+/*  Dashboard gets "message channel closed" errors.                     */
+/* ------------------------------------------------------------------ */
+const ALLOWED_EXTERNAL_ORIGINS = new Set([
+    'http://localhost:5173',
+    'https://sky-market-dashboard.vercel.app',
+]);
+
+chrome.runtime.onMessageExternal.addListener((message, sender, sendResponse) => {
+    // Security: only accept messages from trusted Dashboard origins
+    if (!sender.origin || !ALLOWED_EXTERNAL_ORIGINS.has(sender.origin)) {
+        console.warn('[SKY External] Rejected message from unknown origin:', sender.origin);
+        sendResponse({ success: false, error: 'Unauthorized origin' });
+        return false;
+    }
+
+    console.log('[SKY External] Message from Dashboard:', message?.type, '| Origin:', sender.origin);
+
+    // Only accept auth-related messages from the web app
+    // Content scripts handle all other message types via onMessage
+    const allowedTypes = ['AUTH_TOKEN', 'FORCE_LOGOUT', 'PING'];
+    if (!allowedTypes.includes(message?.type)) {
+        console.warn('[SKY External] Rejected external message type:', message?.type);
+        sendResponse({ success: false, error: 'Message type not allowed via external bridge' });
+        return false;
+    }
+
+    // Process async and ALWAYS call sendResponse (prevents "channel closed" error)
+    (async () => {
+        try {
+            switch (message.type) {
+                case 'AUTH_TOKEN':
+                    return await handleAuthToken(message);
+                case 'FORCE_LOGOUT':
+                    await forceLogout(message.payload?.reason ?? 'external_signout');
+                    return { success: true };
+                case 'PING':
+                    return { success: true, message: 'PONG', version: chrome.runtime.getManifest().version };
+                default:
+                    return { success: false, error: 'Unhandled type' };
+            }
+        } catch (err) {
+            console.error('[SKY External] Handler error:', err);
+            return { success: false, error: String(err) };
+        }
+    })().then(result => {
+        try { sendResponse(result ?? { success: true }); } catch (_) { /* port closed */ }
+    });
+
+    return true; // Keep message channel open for async response
+});
