@@ -86,33 +86,78 @@ async function forceLogout(reason = 'session_expired') {
     } catch (_) { /* non-critical */ }
 }
 
+/* ------------------------------------------------------------------ */
+/*  V1.4.3: Auth Engine — Proactive Refresh + Dedup Mutex + WaitForAuth */
+/* ------------------------------------------------------------------ */
+
+// Singleton refresh promise — prevents concurrent refresh calls (race condition)
+let _refreshPromise = null;
+
 async function ensureValidToken() {
     const auth = await getAuth();
     if (!auth) return null;
 
-    if (!isTokenExpired(auth.expiresAt)) return auth;
+    // Proactive refresh: fire 5 minutes BEFORE expiry (not after)
+    // This ensures the Edge Function NEVER receives a stale JWT.
+    const FIVE_MIN = 5 * 60; // seconds
+    const isAboutToExpire = (Date.now() / 1000) > (auth.expiresAt - FIVE_MIN);
 
-    // Token expired → attempt refresh
-    console.log('[SKY] Token expired, attempting refresh...');
-    const refreshed = await refreshToken(SUPABASE_URL, SUPABASE_ANON_KEY, auth.refreshToken);
+    if (!isAboutToExpire) return auth; // Token still fresh
 
-    if (!refreshed) {
-        // V1.4.2 Fix: Refresh failed → force logout instead of silent null return
-        console.warn('[SKY] Token refresh failed → triggering forceLogout');
-        await forceLogout('refresh_failed');
-        return null;
+    // Dedup: if a refresh is already in flight, wait for it instead of firing another
+    if (_refreshPromise) {
+        console.log('[SKY] Token refresh already in progress, waiting...');
+        return await _refreshPromise;
     }
 
-    const updated = {
-        ...auth,
-        accessToken: refreshed.accessToken,
-        refreshToken: refreshed.refreshToken,
-        expiresAt: refreshed.expiresAt,
-        supabaseUrl: SUPABASE_URL,
-        supabaseAnonKey: SUPABASE_ANON_KEY
-    };
-    await setAuth(updated);
-    return updated;
+    console.log('[SKY] Token expires soon (< 5min) — proactive refresh starting...');
+    _refreshPromise = (async () => {
+        try {
+            const refreshed = await refreshToken(SUPABASE_URL, SUPABASE_ANON_KEY, auth.refreshToken);
+            if (!refreshed) {
+                console.warn('[SKY] Token refresh failed → triggering forceLogout');
+                await forceLogout('refresh_failed');
+                return null;
+            }
+            const updated = {
+                ...auth,
+                accessToken: refreshed.accessToken,
+                refreshToken: refreshed.refreshToken,
+                expiresAt: refreshed.expiresAt,
+                supabaseUrl: SUPABASE_URL,
+                supabaseAnonKey: SUPABASE_ANON_KEY
+            };
+            await setAuth(updated);
+            console.log('[SKY] Token refreshed proactively. New expiry:', refreshed.expiresAt);
+            return updated;
+        } finally {
+            _refreshPromise = null; // Always release mutex
+        }
+    })();
+
+    return await _refreshPromise;
+}
+
+/**
+ * V1.4.3: waitForAuth — Wait up to 15s for a session to appear in storage.
+ * ─────────────────────────────────────────────────────────────────────────
+ * After forceLogout clears storage, the user may log back in on the Dashboard.
+ * The AUTH_TOKEN message re-populates storage, but the content script doesn't
+ * know when this happens. This function polls storage until auth appears.
+ * Used by handleAnalyzeProduct to recover gracefully after a 401.
+ */
+async function waitForAuth(timeoutMs = 15000, intervalMs = 1000) {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+        const auth = await getAuth();
+        if (auth && !isTokenExpired(auth.expiresAt)) {
+            console.log('[SKY] waitForAuth: Session found.');
+            return auth;
+        }
+        await new Promise(r => setTimeout(r, intervalMs));
+    }
+    console.warn('[SKY] waitForAuth: Timed out. User needs to login on Dashboard.');
+    return null;
 }
 /* ------------------------------------------------------------------ */
 /*  Message Handlers                                                   */
@@ -647,8 +692,16 @@ async function handleAddToTracking(msg) {
 }
 
 async function handleAnalyzeProduct(msg) {
-    const auth = await ensureValidToken();
-    if (!auth) return { success: false, error: 'Not authenticated' };
+    // V1.4.3: Try to get a valid token. If null (forceLogout happened),
+    // wait up to 15s for the user to have re-authenticated on the Dashboard.
+    let auth = await ensureValidToken();
+    if (!auth) {
+        console.warn('[SKY] ANALYZE_PRODUCT: No auth. Waiting for session (user may have just logged in)...');
+        auth = await waitForAuth(15000);
+    }
+    if (!auth) {
+        return { success: false, error: 'Not authenticated. Please open Sky-Market Dashboard and login.' };
+    }
 
     const product = msg.payload; // { currentPrice, reviewCount, rating, title, url, ... }
 
