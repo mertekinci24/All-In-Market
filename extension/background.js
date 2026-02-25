@@ -914,6 +914,40 @@ async function handleSerpData(msg) {
 chrome.runtime.onInstalled.addListener(() => {
     console.log('[SKY] Sky-Market Live Intelligence installed');
     chrome.action.setBadgeText({ text: '' });
+    // V1.4.6: Start keep-alive alarm on install
+    chrome.alarms.create('sky-keep-alive', { periodInMinutes: 0.33 }); // Every ~20 seconds
+});
+
+chrome.runtime.onStartup.addListener(() => {
+    // Re-create alarm on browser startup (alarms don't persist across restarts)
+    chrome.alarms.create('sky-keep-alive', { periodInMinutes: 0.33 });
+    console.log('[SKY] Keep-alive alarm registered on startup.');
+});
+
+/* ------------------------------------------------------------------ */
+/*  V1.4.6: SW Keep-Alive Alarm Handler                                */
+/* ------------------------------------------------------------------ */
+/*  Chrome MV3 Service Workers are killed after ~30s of inactivity.    */
+/*  This causes "Receiving end does not exist" errors from content      */
+/*  scripts and the Dashboard. The alarm wakes the SW every 20s.       */
+/* ------------------------------------------------------------------ */
+chrome.alarms.onAlarm.addListener(async (alarm) => {
+    if (alarm.name !== 'sky-keep-alive') return;
+
+    // Minimal work to keep SW alive — just read storage (fast I/O)
+    const auth = await getAuth();
+    if (auth) {
+        // Update badge to show connected status
+        const expired = isTokenExpired(auth.expiresAt);
+        if (!expired) {
+            chrome.action.setBadgeText({ text: '✓' });
+            chrome.action.setBadgeBackgroundColor({ color: '#10b981' });
+        } else {
+            // Token expired while idle — trigger proactive refresh
+            console.log('[SKY] Keep-alive: Token expired, triggering refresh...');
+            await ensureValidToken();
+        }
+    }
 });
 
 /* ------------------------------------------------------------------ */

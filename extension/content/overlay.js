@@ -762,28 +762,54 @@
       });
     }
 
-    document.getElementById('sky-btn-media').addEventListener('click', () => {
-      if (!productData || !productData.imageUrl) return;
-      sendMessageWithRetry({
-        type: 'DOWNLOAD_MEDIA',
-        payload: {
-          url: productData.imageUrl,
-          filename: `sky-product-${Date.now()}.jpg`
+    const mediaBtnEl = document.getElementById('sky-btn-media');
+    if (mediaBtnEl) {
+      mediaBtnEl.addEventListener('click', () => {
+        if (!productData) {
+          console.warn(LOG_PREFIX, 'Media button clicked but no product data');
+          return;
         }
-      }).catch(console.error);
-    });
+        if (!productData.imageUrl) {
+          alert('Ürün görseli bulunamadı.');
+          return;
+        }
+        // Open image in new tab as fallback (doesn't need background)
+        window.open(productData.imageUrl, '_blank');
+        // Also trigger download via background (best effort — won't block if SW sleeping)
+        if (chrome?.runtime?.id) {
+          chrome.runtime.sendMessage({
+            type: 'DOWNLOAD_MEDIA',
+            payload: { url: productData.imageUrl, filename: `sky-product-${Date.now()}.jpg` }
+          }, () => { if (chrome.runtime.lastError) { /* SW sleeping, fallback already opened */ } });
+        }
+      });
+    }
 
-    // Dashboard Button
+    // Dashboard Button — V1.4.6: Direct navigation, no background dependency
     const dashBtn = document.getElementById('sky-btn-dashboard');
     if (dashBtn) {
       dashBtn.addEventListener('click', () => {
         if (!productData) return;
-        sendMessageWithRetry({ type: 'ANALYZE_AND_SAVE', payload: productData })
-          .then(res => {
-            if (res && res.success) alert('Dashboard açılıyor...');
-            else alert(ErrorHandler.handle(res?.error || 'Bilinmeyen hata', 'overlay.dashboard'));
-          })
-          .catch(e => alert(ErrorHandler.handle(e, 'overlay.dashboard')));
+
+        // V1.4.6 Fix 3: Navigate directly to Dashboard — doesn't need background alive
+        // Extract product ASIN/ID for deep link
+        const productId = productData.productId || '';
+        const dashboardUrl = `https://sky-market-dashboard.vercel.app/research${productId ? `?asin=${productId}` : ''}`;
+        window.open(dashboardUrl, '_blank');
+
+        // Fire ANALYZE_AND_SAVE in background (best effort — async, doesn't block nav)
+        if (chrome?.runtime?.id) {
+          chrome.runtime.sendMessage(
+            { type: 'ANALYZE_AND_SAVE', payload: productData },
+            (res) => {
+              if (chrome.runtime.lastError) {
+                console.warn(LOG_PREFIX, 'ANALYZE_AND_SAVE background call failed (SW sleeping):', chrome.runtime.lastError.message);
+              } else if (res && !res.success) {
+                console.warn(LOG_PREFIX, 'ANALYZE_AND_SAVE failed:', res.error);
+              }
+            }
+          );
+        }
       });
     }
   }

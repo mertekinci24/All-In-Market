@@ -8,7 +8,8 @@
     "description": "Trendyol ürün sayfalarından fiyat ve rakip bilgilerini otomatik yakalar, Sky-Market Dashboard'a aktarır.",
     "permissions": [
         "storage",
-        "activeTab"
+        "activeTab",
+        "alarms"
     ],
     "externally_connectable": {
         "matches": [

@@ -297,31 +297,45 @@ serve(async (req) => {
 
         let aiInsight = ''
 
-        // Helper to generate content with timeout and error handling
-        const generateWithFallback = async (modelName: string) => {
-            const genAI = new GoogleGenerativeAI(Deno.env.get('GEMINI_API_KEY') || '')
-            const model = genAI.getGenerativeModel({ model: modelName })
-            const result = await model.generateContent(prompt)
-            return result.response.text().trim()
-        }
+        // V1.4.6: Bail early if no API key configured
+        const geminiKey = Deno.env.get('GEMINI_API_KEY') || ''
+        if (!geminiKey) {
+            console.warn('GEMINI_API_KEY not set — skipping AI insight')
+            aiInsight = '🔧 AI modülü yapılandırılmamış. Dashboard\'dan sistem ayarlarını kontrol edin.'
+        } else {
+            // Helper to generate content with null/empty guard
+            const generateWithFallback = async (modelName: string) => {
+                const genAI = new GoogleGenerativeAI(geminiKey)
+                const model = genAI.getGenerativeModel({ model: modelName })
+                const result = await model.generateContent(prompt)
+                const text = result?.response?.text()?.trim() ?? ''
+                // V1.4.6: Guard against empty Gemini response (occasional API quirk)
+                if (!text) throw new Error('Empty response from Gemini')
+                return text
+            }
 
-        try {
-            // 1. Try Primary: Gemini 2.0 Flash
-            aiInsight = await generateWithFallback('gemini-2.0-flash')
-        } catch (error: any) { // Explicitly type error as 'any' or 'unknown' then narrow
-            console.warn(`Gemini 2.0 Flash failed (${error.message}), trying fallback...`)
             try {
-                // 2. Try Fallback: Gemini 1.5 Flash
-                aiInsight = await generateWithFallback('gemini-1.5-flash')
-            } catch (fallbackError: any) { // Explicitly type error as 'any' or 'unknown' then narrow
-                console.error('Gemini 1.5 Flash also failed:', fallbackError)
-
-                // 3. Return a graceful error that isn't a 500 crash
-                // We return a "soft" insight so the UI still works
-                if (error.message?.includes('429') || fallbackError.message?.includes('429')) {
-                    aiInsight = '⚠️ Kota limiti aşıldı (429). Lütfen 1 dakika bekleyin.'
-                } else {
-                    aiInsight = 'AI servisi şu an yanıt veremiyor.'
+                // 1. Try Primary: Gemini 2.0 Flash
+                aiInsight = await generateWithFallback('gemini-2.0-flash')
+            } catch (error) {
+                const errMsg = error instanceof Error ? error.message : String(error)
+                console.warn(`Gemini 2.0 Flash failed (${errMsg}), trying fallback...`)
+                try {
+                    // 2. Try Fallback: Gemini 1.5 Flash
+                    aiInsight = await generateWithFallback('gemini-1.5-flash')
+                } catch (fallbackError) {
+                    const fbMsg = fallbackError instanceof Error ? fallbackError.message : String(fallbackError)
+                    console.error('Both Gemini models failed:', fbMsg)
+                    // 3. Graceful degradation — never crash the extension
+                    const isQuota = errMsg.includes('429') || fbMsg.includes('429')
+                    const isEmpty = errMsg.includes('Empty response') || fbMsg.includes('Empty response')
+                    if (isQuota) {
+                        aiInsight = '⚠️ AI kota limiti aşıldı. 1 dakika sonra tekrar deneyin.'
+                    } else if (isEmpty) {
+                        aiInsight = '⚠️ AI yanıt üretemedi. Ürün verisi AI analizi için yeterli olmayabilir.'
+                    } else {
+                        aiInsight = '🔧 AI analizi şu an yapılamıyor. Lütfen daha sonra tekrar deneyin.'
+                    }
                 }
             }
         }
