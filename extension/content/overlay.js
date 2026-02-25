@@ -7,6 +7,9 @@
   const LOG_PREFIX = '[SKY Overlay]';
   let productData = null;
 
+  // V1.4.8: Centralised Dashboard URL — change here for production
+  const DASHBOARD_BASE_URL = 'http://localhost:5173';
+
   /* ---------------------------------------------------------------- */
   /*  V1.4.0: Inline Global Error Handler                              */
   /* ---------------------------------------------------------------- */
@@ -794,7 +797,7 @@
         // V1.4.6 Fix 3: Navigate directly to Dashboard — doesn't need background alive
         // Extract product ASIN/ID for deep link
         const productId = productData.productId || '';
-        const dashboardUrl = `https://sky-market-dashboard.vercel.app/research${productId ? `?asin=${productId}` : ''}`;
+        const dashboardUrl = `${DASHBOARD_BASE_URL}/research${productId ? `?asin=${productId}` : ''}`;
         window.open(dashboardUrl, '_blank');
 
         // Fire ANALYZE_AND_SAVE in background (best effort — async, doesn't block nav)
