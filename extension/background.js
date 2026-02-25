@@ -2,7 +2,8 @@
 /*  Service Worker (Background) — Sky-Market Chrome Extension          */
 /*  Handles auth token storage and Supabase REST API calls             */
 /* ------------------------------------------------------------------ */
-import { insertRow, selectRows, isTokenExpired, refreshToken } from './lib/supabase-rest.js';
+import { insertRow, insertRowAnon, selectRows, isTokenExpired, refreshToken } from './lib/supabase-rest.js';
+
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // V2 Gateway Configuration
@@ -57,27 +58,56 @@ async function getAuth() {
 async function setAuth(auth) {
     await chrome.storage.local.set({ auth });
 }
+
+/* ------------------------------------------------------------------ */
+/*  V1.4.2: forceLogout — broadcast to ALL tabs + popup               */
+/*  Called whenever a token is irrecoverably invalid (401/403/no-refresh) */
+/* ------------------------------------------------------------------ */
+async function forceLogout(reason = 'session_expired') {
+    console.warn('[SKY] FORCE LOGOUT triggered. Reason:', reason);
+    await chrome.storage.local.remove('auth');
+
+    // Broadcast to all extension pages (popup, overlay content scripts)
+    try {
+        chrome.runtime.sendMessage({ type: 'FORCE_LOGOUT', payload: { reason } }, () => {
+            // Suppress errors if no listener (popup closed, etc.)
+            if (chrome.runtime.lastError) { /* no-op */ }
+        });
+    } catch (_) { /* must not throw */ }
+
+    // Broadcast to all Trendyol tabs that are running the overlay
+    try {
+        const tabs = await chrome.tabs.query({ url: ['*://*.trendyol.com/*'] });
+        for (const tab of tabs) {
+            chrome.tabs.sendMessage(tab.id, { type: 'FORCE_LOGOUT', payload: { reason } }, () => {
+                if (chrome.runtime.lastError) { /* tab may not have listener */ }
+            });
+        }
+    } catch (_) { /* non-critical */ }
+}
+
 async function ensureValidToken() {
     const auth = await getAuth();
-    if (!auth)
-        return null;
-    if (!isTokenExpired(auth.expiresAt))
-        return auth;
-    // Token expired → refresh
-    console.log('[SKY] Token expired, refreshing...');
-    // V1.4.1 Fix: Use global constants to ensure we use the latest keys, not stale stored ones
+    if (!auth) return null;
+
+    if (!isTokenExpired(auth.expiresAt)) return auth;
+
+    // Token expired → attempt refresh
+    console.log('[SKY] Token expired, attempting refresh...');
     const refreshed = await refreshToken(SUPABASE_URL, SUPABASE_ANON_KEY, auth.refreshToken);
+
     if (!refreshed) {
-        console.warn('[SKY] Token refresh failed');
-        await chrome.storage.local.remove('auth');
+        // V1.4.2 Fix: Refresh failed → force logout instead of silent null return
+        console.warn('[SKY] Token refresh failed → triggering forceLogout');
+        await forceLogout('refresh_failed');
         return null;
     }
+
     const updated = {
         ...auth,
         accessToken: refreshed.accessToken,
         refreshToken: refreshed.refreshToken,
         expiresAt: refreshed.expiresAt,
-        // Update stored keys to match current config just in case
         supabaseUrl: SUPABASE_URL,
         supabaseAnonKey: SUPABASE_ANON_KEY
     };
@@ -369,49 +399,52 @@ async function handleLastCapture() {
 /* ------------------------------------------------------------------ */
 /*  Main Listener                                                      */
 /* ------------------------------------------------------------------ */
+/* ------------------------------------------------------------------ */
+/*  V1.4.2: Persistent Async Message Listener                         */
+/*  CRITICAL: return true keeps the channel open until sendResponse()  */
+/*  is called. ALL async work must happen inside the Promise chain.    */
+/*  Never call sendResponse() outside .then()/.catch() — channel closes. */
+/* ------------------------------------------------------------------ */
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-    const handler = async () => {
+    // Immediately return true to signal async response.
+    // The promise chain below keeps the channel alive.
+    (async () => {
         switch (message.type) {
-            case 'AUTH_TOKEN':
-                return handleAuthToken(message);
-            case 'AUTH_STATUS':
-                return handleAuthStatus();
-            case 'PRICE_DATA':
-                return handlePriceData(message);
-            case 'LAST_CAPTURE':
-                return handleLastCapture();
-            case 'ANALYZE_REVIEWS':
-                return handleAnalyzeReviews(message);
-            case 'CHECK_BACKEND_HEALTH':
-                return handleBackendHealthCheck();
-            case 'ANALYZE_PRODUCT':
-                return handleAnalyzeProduct(message);
-            case 'SERP_DATA':
-                return handleSerpData(message);
-            case 'ADD_TRACKING':
-                return handleAddToTracking(message);
-            case 'DOWNLOAD_MEDIA':
-                return handleDownloadMedia(message);
-            case 'ANALYZE_AND_SAVE':
-                return handleAnalyzeAndSave(message);
-            case 'LOG_ERROR':
-                return handleLogError(message);
-            case 'PING':
-                return { success: true, message: 'PONG' };
+            case 'AUTH_TOKEN': return handleAuthToken(message);
+            case 'AUTH_STATUS': return handleAuthStatus();
+            case 'PRICE_DATA': return handlePriceData(message);
+            case 'LAST_CAPTURE': return handleLastCapture();
+            case 'ANALYZE_REVIEWS': return handleAnalyzeReviews(message);
+            case 'CHECK_BACKEND_HEALTH': return handleBackendHealthCheck();
+            case 'ANALYZE_PRODUCT': return handleAnalyzeProduct(message);
+            case 'SERP_DATA': return handleSerpData(message);
+            case 'ADD_TRACKING': return handleAddToTracking(message);
+            case 'DOWNLOAD_MEDIA': return handleDownloadMedia(message);
+            case 'ANALYZE_AND_SAVE': return handleAnalyzeAndSave(message);
+            case 'LOG_ERROR': return handleLogError(message);
+            case 'PING': return { success: true, message: 'PONG' };
             default:
-                console.warn('[SKY] Unknown message:', message.type);
+                console.warn('[SKY] Unknown message type:', message.type);
                 return { error: 'Unknown message type: ' + message.type };
         }
-    };
-    handler().then(sendResponse).catch((err) => {
-        console.error('[SKY] Handler error:', err);
-        sendResponse({ error: err.message });
-    });
-    return true; // async sendResponse
+    })()
+        .then(result => {
+            // Safely send response — channel is still open because we returned true
+            try { sendResponse(result ?? {}); } catch (_) { /* port closed or tab navigated away */ }
+        })
+        .catch(err => {
+            console.error('[SKY] Unhandled handler error for', message.type, err);
+            try { sendResponse({ success: false, error: err.message ?? String(err) }); } catch (_) { /* no-op */ }
+        });
+
+    return true; // MUST be synchronous return true — keeps message channel open
 });
 
 /* ------------------------------------------------------------------ */
 /*  V1.4.0: Technical Log Bridge                                       */
+/* ------------------------------------------------------------------ */
+/* ------------------------------------------------------------------ */
+/*  V1.4.2: Technical Log Bridge — Logging must NEVER block the user   */
 /* ------------------------------------------------------------------ */
 async function handleLogError(msg) {
     try {
@@ -428,17 +461,35 @@ async function handleLogError(msg) {
             page_url: page_url || null,
         };
 
-        // V1.4.1 Fix: Use config for insertRow (was missing config parameter → silent crash)
-        const auth = await ensureValidToken();
-        const config = auth
-            ? { url: auth.supabaseUrl, anonKey: auth.supabaseAnonKey, accessToken: auth.accessToken }
-            : { url: SUPABASE_URL, anonKey: SUPABASE_ANON_KEY, accessToken: SUPABASE_ANON_KEY };
+        // V1.4.2 Fix: insertRowAnon — `technical_logs` uses anon INSERT policy
+        // This works even when user is not logged in (fires on schema validation errors etc.)
+        // Rule: Authorization: Bearer <anonKey> → activates anon role → RLS anon_can_insert_logs allows it
+        const anonResult = await insertRowAnon('technical_logs', row, SUPABASE_URL, SUPABASE_ANON_KEY);
 
-        await insertRow('technical_logs', row, config);
-        console.log('[SKY] Technical log saved:', row.level, row.message);
+        if (anonResult.error) {
+            // Anon insert failed (RLS policy may not be configured yet)
+            // Fallback: try authenticated insert if session is available
+            console.warn('[SKY] Anon log insert failed:', anonResult.error, '(Fallback: auth insert)');
+            const auth = await getAuth();
+            if (auth) {
+                const config = { url: auth.supabaseUrl, anonKey: auth.supabaseAnonKey, accessToken: auth.accessToken };
+                const authResult = await insertRow('technical_logs', row, config);
+                if (authResult.error) {
+                    console.warn('[SKY] Auth log insert also failed:', authResult.error);
+                } else {
+                    console.log('[SKY] Technical log saved (auth fallback):', row.level);
+                }
+            } else {
+                // No session — logging is unavailable until RLS policy is configured
+                console.warn('[SKY] Cannot log: no session + anon insert rejected. Configure RLS: anon_can_insert_logs');
+            }
+        } else {
+            console.log('[SKY] Technical log saved (anon):', row.level, row.message);
+        }
+
         return { success: true };
     } catch (e) {
-        // Log bridge must not crash the extension
+        // Log bridge MUST NOT crash the extension
         console.error('[SKY] Failed to save technical log:', e);
         return { success: false, error: e.message };
     }
@@ -672,11 +723,16 @@ async function handleAnalyzeProduct(msg) {
             const errorText = await response.text();
             console.error('Edge Function Error (Raw):', response.status, errorText);
 
-            // V1.4.1 Fix: Handle Auth Errors specifically
+            // V1.4.2 Fix: 401/403 → forceLogout (not just storage.remove)
+            // This broadcasts FORCE_LOGOUT to overlay + popup so user sees the message
             if (response.status === 401 || response.status === 403) {
-                console.warn('[SKY] Auth invalid (401/403), clearing session.');
-                await chrome.storage.local.remove('auth');
-                return { success: false, error: 'Oturum süresi doldu. Lütfen eklentiyi açıp tekrar giriş yapın (401).' };
+                console.warn('[SKY] Auth rejected by Edge Function (401/403) → forceLogout');
+                await forceLogout('edge_function_401');
+                return {
+                    success: false,
+                    error: '🔒 Oturum süresi doldu. Dashboard\'a gidip tekrar giriş yapın.',
+                    forceLogout: true
+                };
             }
 
             // Try to parse JSON if possible for cleaner message
