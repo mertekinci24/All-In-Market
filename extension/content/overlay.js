@@ -64,6 +64,17 @@
     // Listen for future data
     document.addEventListener('SKY_PRODUCT_DATA_READY', handleProductData);
     window.addEventListener('SKY_PRODUCT_PARSED', handleProductData);
+
+    // V1.4.4: Listen for FORCE_LOGOUT broadcast from background
+    // When session expires, show a re-login CTA instead of a dead UI
+    if (chrome?.runtime?.id) {
+      chrome.runtime.onMessage.addListener((message) => {
+        if (message.type === 'FORCE_LOGOUT') {
+          console.warn(LOG_PREFIX, 'FORCE_LOGOUT received. Reason:', message.payload?.reason);
+          showForceLogoutUI(message.payload?.reason);
+        }
+      });
+    }
   }
 
   function handleProductData(event) {
@@ -603,6 +614,13 @@
           }
         } else {
           console.error(LOG_PREFIX, 'Analyze Product Failed (Backend):', response);
+
+          // V1.4.4: If backend forced a logout (401/403), show Login CTA
+          if (response?.forceLogout) {
+            showForceLogoutUI('edge_function_401');
+            return;
+          }
+
           const friendlyErr = ErrorHandler.handle(response?.error || 'Bilinmeyen hata', 'overlay.analyzeProduct');
           safeSetText('sky-opp-score', 'N/A');
           safeSetText('sky-ai-insight', friendlyErr);
@@ -614,6 +632,86 @@
         safeSetText('sky-ai-insight', ErrorHandler.handle(err, 'overlay.analyzeProduct'));
       });
   }
+
+  /**
+   * V1.4.4: showForceLogoutUI — Overlays a re-login CTA on the panel.
+   * Called when background broadcasts FORCE_LOGOUT or when ANALYZE_PRODUCT
+   * returns { forceLogout: true }. This NEVER crashes the overlay itself.
+   */
+  function showForceLogoutUI(reason = 'session_expired') {
+    const root = document.getElementById('sky-market-overlay-root');
+    if (!root) return;
+
+    // Disable analyze buttons so user doesn't retry into a wall
+    ['sky-btn-add', 'sky-btn-ai', 'sky-btn-media', 'sky-btn-dashboard'].forEach(id => {
+      const btn = document.getElementById(id);
+      if (btn) { btn.disabled = true; btn.style.opacity = '0.4'; }
+    });
+
+    // Show inline login prompt — inject once
+    if (document.getElementById('sky-relogin-banner')) return;
+
+    const banner = document.createElement('div');
+    banner.id = 'sky-relogin-banner';
+    banner.style.cssText = `
+      position: absolute;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.92);
+      backdrop-filter: blur(8px);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      padding: 24px;
+      border-radius: 20px;
+      z-index: 10;
+      text-align: center;
+    `;
+    banner.innerHTML = `
+      <div style="font-size: 36px;">🔒</div>
+      <div style="font-size: 14px; font-weight: 700; color: #f1f5f9;">Oturum Süresi Doldu</div>
+      <div style="font-size: 11px; color: #94a3b8; line-height: 1.5;">Dashboard'a giriş yaparak oturumunuzu yenileyin. Eklenti otomatik olarak eşitlenir.</div>
+      <button id="sky-goto-dashboard" style="
+        background: linear-gradient(135deg, #4f46e5, #3b82f6);
+        color: white;
+        border: none;
+        border-radius: 10px;
+        padding: 12px 20px;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+        width: 100%;
+        font-family: inherit;
+        box-shadow: 0 4px 12px rgba(79,70,229,0.4);
+      ">🚀 Dashboard'a Git &amp; Giriş Yap</button>
+      <button id="sky-dismiss-logout" style="
+        background: transparent;
+        color: #64748b;
+        border: none;
+        font-size: 11px;
+        cursor: pointer;
+        font-family: inherit;
+      ">Kapat</button>
+    `;
+
+    // Make the root relative so absolute positioning works
+    root.style.position = 'fixed';
+    root.querySelector('.sky-glass').style.position = 'relative';
+    root.querySelector('.sky-glass').appendChild(banner);
+
+    document.getElementById('sky-goto-dashboard')?.addEventListener('click', () => {
+      window.open('https://sky-market-dashboard.vercel.app', '_blank');
+    });
+    document.getElementById('sky-dismiss-logout')?.addEventListener('click', () => {
+      banner.remove();
+      // Re-enable buttons
+      ['sky-btn-add', 'sky-btn-ai', 'sky-btn-media', 'sky-btn-dashboard'].forEach(id => {
+        const btn = document.getElementById(id);
+        if (btn) { btn.disabled = false; btn.style.opacity = '1'; }
+      });
+    });
+  } // end showForceLogoutUI
 
   function setupEventListeners(root) {
     document.getElementById('sky-overlay-minimize').addEventListener('click', () => {
