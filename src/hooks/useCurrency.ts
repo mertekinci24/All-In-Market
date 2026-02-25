@@ -18,16 +18,23 @@ export function useCurrency() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  const fetchRates = useCallback(async () => {
+  const fetchRates = useCallback(async (accessToken?: string | null) => {
     setLoading(true)
     setError(null)
     try {
-      // V1.4.6: Supabase Edge Functions require BOTH:
-      //   apikey: <anon_key>          — gateway authentication
-      //   Authorization: Bearer <jwt> — user session (or anon if no session)
-      // Sending only one of them causes a 401.
-      const { data: { session } } = await supabase.auth.getSession()
-      const bearerToken = session?.access_token ?? SUPABASE_ANON_KEY
+      // V1.4.7: Use provided token if given, otherwise get fresh session.
+      // currency-rates requires a valid user JWT — anon key alone is rejected (401).
+      let bearerToken = accessToken
+      if (!bearerToken) {
+        const { data: { session } } = await supabase.auth.getSession()
+        bearerToken = session?.access_token ?? null
+      }
+
+      if (!bearerToken) {
+        // Not logged in yet — silently skip, will retry on auth state change (SIGNED_IN)
+        setLoading(false)
+        return
+      }
 
       const res = await fetch(`${SUPABASE_URL}/functions/v1/currency-rates`, {
         headers: {
@@ -47,8 +54,19 @@ export function useCurrency() {
   }, [])
 
   useEffect(() => {
+    // Initial fetch (may be no-op if user not logged in yet)
     fetchRates()
+
+    // V1.4.7: Re-fetch when user signs in — resolves 401 that occurs before session loads.
+    // Supabase populates the session asynchronously; at component mount it may still be null.
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+        fetchRates(session?.access_token)
+      }
+    })
+
+    return () => subscription.unsubscribe()
   }, [fetchRates])
 
-  return { rates, loading, error, refetch: fetchRates }
+  return { rates, loading, error, refetch: () => fetchRates() }
 }

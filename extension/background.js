@@ -390,17 +390,16 @@ async function handleAnalyzeReviews(msg) {
         return { success: false, error: '⚠️ Analiz servisine ulaşılamıyor (Ağ/VPN kontrol edin).' };
     }
 
-    const { reviews, productName, url } = msg.payload;
+    const { reviews, productName, url } = msg.payload || {};
     if (!reviews || reviews.length === 0) {
-        return { success: false, error: 'Yorum bulunamadi.' };
+        return { success: false, error: '📝 Bu sayfada analiz edilecek yorum bulunamadı. Trendyol yorumlar sekmesini ziyaret edin.' };
     }
 
     // Attempt to extract ASIN from URL if not provided
-    // Trendyol URL structure: ...-p-123456...
     let asin = null;
-    const match = url.match(/-p-(\d+)/);
-    if (match) {
-        asin = match[1];
+    if (url) {
+        const match = url.match(/-p-(\d+)/);
+        if (match) asin = match[1];
     }
 
     try {
@@ -599,10 +598,8 @@ async function handleAnalyzeAndSave(msg) {
             // We continue to open the tab anyway
         }
 
-        // 5. Open Dashboard
-        const targetUrl = `http://localhost:5173/research?asin=${asin}`;
-        chrome.tabs.create({ url: targetUrl });
-
+        // V1.4.7: Navigation is now handled by overlay.js (window.open)
+        // Do NOT open a tab here — would cause a duplicate window
         return { success: true };
 
     } catch (e) {
