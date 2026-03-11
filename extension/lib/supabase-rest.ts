@@ -91,14 +91,24 @@ export function isTokenExpired(expiresAt: number): boolean {
     return Date.now() / 1000 > expiresAt - 60
 }
 
+export interface TokenRefreshResult {
+    success: boolean
+    accessToken?: string
+    refreshToken?: string
+    expiresAt?: number
+    errorType?: 'network' | 'auth_failed' | 'invalid_response'
+    errorMessage?: string
+}
+
 /**
  * Refresh a Supabase token using the refresh token.
+ * V1.5.0: Now returns detailed error types instead of null
  */
 export async function refreshToken(
     supabaseUrl: string,
     anonKey: string,
     currentRefreshToken: string,
-): Promise<{ accessToken: string; refreshToken: string; expiresAt: number } | null> {
+): Promise<TokenRefreshResult> {
     try {
         const res = await fetch(`${supabaseUrl}/auth/v1/token?grant_type=refresh_token`, {
             method: 'POST',
@@ -109,15 +119,45 @@ export async function refreshToken(
             body: JSON.stringify({ refresh_token: currentRefreshToken }),
         })
 
-        if (!res.ok) return null
+        if (!res.ok) {
+            // 401/403 = invalid/expired refresh token
+            if (res.status === 401 || res.status === 403) {
+                return {
+                    success: false,
+                    errorType: 'auth_failed',
+                    errorMessage: 'Refresh token is invalid or expired'
+                }
+            }
+
+            // Other HTTP errors
+            return {
+                success: false,
+                errorType: 'network',
+                errorMessage: `HTTP ${res.status}: ${await res.text()}`
+            }
+        }
 
         const data = await res.json()
+
+        if (!data.access_token || !data.refresh_token) {
+            return {
+                success: false,
+                errorType: 'invalid_response',
+                errorMessage: 'Missing tokens in response'
+            }
+        }
+
         return {
+            success: true,
             accessToken: data.access_token,
             refreshToken: data.refresh_token,
             expiresAt: Math.floor(Date.now() / 1000) + data.expires_in,
         }
-    } catch {
-        return null
+    } catch (error) {
+        return {
+            success: false,
+            errorType: 'network',
+            errorMessage: (error as Error).message || 'Network request failed'
+        }
     }
 }

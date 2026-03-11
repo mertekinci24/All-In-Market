@@ -250,8 +250,9 @@ export class OpportunityScoreEngine {
   }
 
   private normalize(value: number, target: number, type: 'higher-better' | 'lower-better', sensitivity: number = 0.5): number {
-    // Adjust steepness based on target magnitude
-    const steepness = sensitivity / (target * 0.1 || 1)
+    // BUG-09 fix: Guard against division by zero or very small targets
+    const targetMagnitude = Math.abs(target) * 0.1
+    const steepness = targetMagnitude > 0.001 ? sensitivity / targetMagnitude : sensitivity
     const curve = this.calculateSCurve(value, target, steepness)
     return type === 'higher-better' ? curve : 1 - curve
   }

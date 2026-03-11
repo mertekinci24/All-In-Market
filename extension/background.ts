@@ -51,19 +51,29 @@ async function ensureValidToken(): Promise<StoredAuth | null> {
             return currentAuth
         }
 
-        // Perform refresh
+        // Perform refresh (V1.5.0 - BUG-05 fix: detailed error handling)
         const result = await refreshToken(auth.supabaseUrl, auth.supabaseAnonKey, auth.refreshToken)
-        if (!result) {
-            console.warn('[SKY] Token refresh failed')
-            await chrome.storage.local.remove('auth')
+
+        if (!result.success) {
+            console.error('[SKY] Token refresh failed:', result.errorType, result.errorMessage)
+
+            // Auth failure = invalid/expired refresh token → force logout
+            if (result.errorType === 'auth_failed') {
+                await chrome.storage.local.remove('auth')
+                console.warn('[SKY] Invalid refresh token, clearing auth')
+            } else {
+                // Network error = transient, let caller retry
+                console.warn('[SKY] Network error during refresh, auth state preserved for retry')
+            }
+
             return null
         }
 
         const updated: StoredAuth = {
             ...auth,
-            accessToken: result.accessToken,
-            refreshToken: result.refreshToken,
-            expiresAt: result.expiresAt,
+            accessToken: result.accessToken!,
+            refreshToken: result.refreshToken!,
+            expiresAt: result.expiresAt!,
         }
         await setAuth(updated)
         console.log('[SKY] Token refreshed successfully')
@@ -156,12 +166,13 @@ async function handlePriceData(msg: ExtensionMessage & { type: 'PRICE_DATA' }): 
     const config = { url: auth.supabaseUrl, anonKey: auth.supabaseAnonKey, accessToken: auth.accessToken }
 
     // Try URL match first (exact match to prevent injection)
+    // BUG-10 fix: Only match active products
     let matchedProductId: string | null = null
     const urlBase = product.url.split('?')[0]
 
     const urlResult = await selectRows(
         'products',
-        `store_id=eq.${auth.storeId}&marketplace_url=eq.${encodeURIComponent(urlBase)}&select=id&limit=1`,
+        `store_id=eq.${auth.storeId}&marketplace_url=eq.${encodeURIComponent(urlBase)}&is_active=eq.true&select=id&limit=1`,
         config,
     )
     if (urlResult.data && Array.isArray(urlResult.data) && urlResult.data.length > 0) {

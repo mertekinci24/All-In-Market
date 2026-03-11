@@ -389,6 +389,30 @@ supabase/functions/
 
 ## 📜 CHANGELOG
 
+### [1.5.1] — 2026-03-11 — "Stability & Polish"
+**P1/P2 Bug Fixes & Code Health Improvements**
+
+#### 🐛 Bug Fixes
+- **BUG-05 FIXED** — Token refresh now returns detailed error types (`network`, `auth_failed`, `invalid_response`). Caller can distinguish transient errors from auth failures. Network errors preserve auth state for retry, auth failures trigger logout.
+- **BUG-09 FIXED** — S-curve normalization protected against division by zero. Added guard for targets < 0.001 to prevent Infinity values.
+- **BUG-10 FIXED** — Zombie product tracking eliminated. Extension now filters `is_active=eq.true` when matching products. Inactive products no longer accumulate snapshots.
+
+#### 🔒 Security Improvements
+- **TD-18 VERIFIED** — RLS policies audited. `commission_schedules` already uses separate SELECT/INSERT/UPDATE/DELETE policies (no FOR ALL anti-pattern found). All 11 tables secured correctly.
+- **CRITICAL SECURITY FIX** — During credential provisioning testing, discovered `extension/config.js` still contained v1.4.x hardcoded credentials. This would have completely bypassed v1.5.0's security improvements. Fixed: config.js now matches config.ts (empty credentials). Bundle verification confirms zero credential exposure.
+
+#### 📦 Infrastructure
+- Token refresh error handling with retry logic differentiation
+- S-curve calculation stability improvements
+- Product matching optimized with active-only filter
+
+#### 🎯 Impact
+- **Token Refresh Reliability:** Network errors no longer force logout
+- **Score Calculation:** Zero edge cases handled gracefully
+- **Database Efficiency:** Inactive products excluded from queries
+
+---
+
 ### [1.5.0] — 2026-03-11 — "Enterprise Secure"
 **Security & Reliability Overhaul**
 

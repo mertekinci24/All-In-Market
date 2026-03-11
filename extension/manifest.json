@@ -1,7 +1,7 @@
 {
     "manifest_version": 3,
     "name": "Sky-Market Live Intelligence",
-    "version": "1.4.1",
+    "version": "1.5.1",
     "content_security_policy": {
         "extension_pages": "script-src 'self'; object-src 'self'; connect-src 'self' http://localhost:5173 https://*.supabase.co"
     },
