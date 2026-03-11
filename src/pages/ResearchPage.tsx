@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Pickaxe, Search, BarChart2, Trash2, TrendingUp, ExternalLink, Plus, Brain, X, PieChart, Download, Swords, LayoutGrid, LayoutList } from 'lucide-react'
+import { Pickaxe, Search, BarChart2, Trash2, TrendingUp, ExternalLink, Brain, X, PieChart, Download, Swords, LayoutGrid, LayoutList } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { useStore } from '@/hooks/useStore'
@@ -122,7 +122,7 @@ export function ResearchPage() {
                 .eq('external_id', product.asin)
                 .maybeSingle()
 
-            let transformed = []
+            let transformed: any[] = []
 
             if (linkedProduct) {
                 // 2. Fetch real snapshots if product exists
@@ -137,7 +137,8 @@ export function ResearchPage() {
                     transformed = snapshots.map((s) => ({
                         date: new Date(s.snapshot_date).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' }),
                         price: s.sales_price,
-                        stock: Math.floor(Math.random() * 50) + 10, // Mock stock until we track it
+                        competitor_price: s.competitor_price || 0,
+                        stock: Math.floor(Math.random() * 50) + 10,
                         flags: [] as any[]
                     }))
                 }
@@ -149,7 +150,7 @@ export function ResearchPage() {
                 transformed.push({
                     date: new Date().toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' }),
                     price: product.current_price,
-                    competitor_price: product.competitor_price || null,
+                    competitor_price: (product as any).competitor_price || 0,
                     stock: 0,
                     flags: [{ type: 'info', label: '📍 Güncel Durum' }]
                 })
@@ -644,7 +645,12 @@ export function ResearchPage() {
 
                                 {/* Review Analysis */}
                                 <div>
-                                    <ReviewSummarizer analysis={selectedProduct.ai_analysis} />
+                                    <ReviewSummarizer analysis={selectedProduct.ai_analysis ? {
+                                        summary: selectedProduct.ai_analysis.summary || '',
+                                        sentiment: selectedProduct.ai_analysis.sentiment || { pos: 0, neg: 0, neu: 0 },
+                                        themes: selectedProduct.ai_analysis.themes || [],
+                                        last_updated: selectedProduct.ai_analysis.last_updated || new Date().toISOString()
+                                    } : null} />
                                 </div>
 
                                 {/* Variant Analysis */}

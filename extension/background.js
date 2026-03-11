@@ -237,10 +237,10 @@ async function handlePriceData(msg) {
     const product = msg.payload;
     // Try to match product by marketplace_url or name
     const config = { url: auth.supabaseUrl, anonKey: auth.supabaseAnonKey, accessToken: auth.accessToken };
-    // Try URL match first
+    // Try URL match first (exact match to prevent injection)
     let matchedProductId = null;
     const urlBase = product.url.split('?')[0];
-    const urlResult = await selectRows('products', `store_id=eq.${auth.storeId}&marketplace_url=like.*${encodeURIComponent(urlBase.split('/').pop() ?? '')}*&select=id&limit=1`, config);
+    const urlResult = await selectRows('products', `store_id=eq.${auth.storeId}&marketplace_url=eq.${encodeURIComponent(urlBase)}&select=id&limit=1`, config);
     if (urlResult.data && Array.isArray(urlResult.data) && urlResult.data.length > 0) {
         matchedProductId = urlResult.data[0].id;
     }
@@ -632,9 +632,9 @@ async function handleAddToTracking(msg) {
     const p = msg.payload;
     const config = { url: auth.supabaseUrl, anonKey: auth.supabaseAnonKey, accessToken: auth.accessToken };
 
-    // 1. Check if already exists
+    // 1. Check if already exists (exact match to prevent injection)
     const urlBase = p.url.split('?')[0];
-    const { data: existing } = await selectRows('products', `store_id=eq.${auth.storeId}&marketplace_url=like.*${encodeURIComponent(urlBase.split('/').pop() ?? '')}*&select=id`, config);
+    const { data: existing } = await selectRows('products', `store_id=eq.${auth.storeId}&marketplace_url=eq.${encodeURIComponent(urlBase)}&select=id`, config);
 
     if (existing && existing.length > 0) {
         return { success: true, message: 'Already tracked', id: existing[0].id };
@@ -708,11 +708,11 @@ async function handleAnalyzeProduct(msg) {
         return { success: false, error: 'Ürün fiyatı alınamadı. Sayfayı yenileyip tekrar deneyin.' };
     }
 
-    // 1. Try to find existing product in DB (to get precise buy_price / margin)
+    // 1. Try to find existing product in DB (to get precise buy_price / margin) - exact match to prevent injection
     let dbProduct = null;
     const urlBase = product.url.split('?')[0];
     // V1.4.1 Fix: Use global constants
-    const urlResult = await selectRows('products', `store_id=eq.${auth.storeId}&marketplace_url=like.*${encodeURIComponent(urlBase.split('/').pop() ?? '')}*&select=*&limit=1`, { url: SUPABASE_URL, anonKey: SUPABASE_ANON_KEY, accessToken: auth.accessToken });
+    const urlResult = await selectRows('products', `store_id=eq.${auth.storeId}&marketplace_url=eq.${encodeURIComponent(urlBase)}&select=*&limit=1`, { url: SUPABASE_URL, anonKey: SUPABASE_ANON_KEY, accessToken: auth.accessToken });
 
     if (urlResult.data && urlResult.data.length > 0) {
         dbProduct = urlResult.data[0];

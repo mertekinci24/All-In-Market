@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
 import { calculateProfit, resolveShippingCost, resolveCommissionRate } from '@/lib/financial-engine'
 import type { ShippingRate, CommissionSchedule, CommissionResolution } from '@/lib/financial-engine'
@@ -58,19 +58,12 @@ export function useProducts(
   commissionSchedules: CommissionSchedule[] = [],
   marketplace: string = 'Trendyol',
 ) {
-  const [products, setProducts] = useState<ProductWithProfit[]>([])
+  const [rawProducts, setRawProducts] = useState<ProductRow[]>([])
   const [loading, setLoading] = useState(true)
-
-  const enrichProducts = useCallback((rows: ProductRow[]) => {
-    return rows.map((p) => {
-      const { profit, commissionResolution } = computeProfit(p, shippingRates, commissionSchedules, marketplace)
-      return { ...p, profit, commissionResolution }
-    })
-  }, [shippingRates, commissionSchedules, marketplace])
 
   const fetchProducts = useCallback(async () => {
     if (!storeId) {
-      setProducts([])
+      setRawProducts([])
       setLoading(false)
       return
     }
@@ -82,22 +75,21 @@ export function useProducts(
       .order('updated_at', { ascending: false })
 
     const rows = (data ?? []) as ProductRow[]
-    setProducts(enrichProducts(rows))
+    setRawProducts(rows)
     setLoading(false)
-  }, [storeId, enrichProducts])
+  }, [storeId])
 
   useEffect(() => {
     fetchProducts()
   }, [fetchProducts])
 
-  useEffect(() => {
-    if (products.length > 0 && (shippingRates.length > 0 || commissionSchedules.length >= 0)) {
-      setProducts((prev) => prev.map((p) => {
-        const { profit, commissionResolution } = computeProfit(p, shippingRates, commissionSchedules, marketplace)
-        return { ...p, profit, commissionResolution }
-      }))
-    }
-  }, [shippingRates, commissionSchedules, marketplace])
+  // Memoized enrichment - only recomputes when dependencies change
+  const products = useMemo(() => {
+    return rawProducts.map((p) => {
+      const { profit, commissionResolution } = computeProfit(p, shippingRates, commissionSchedules, marketplace)
+      return { ...p, profit, commissionResolution }
+    })
+  }, [rawProducts, shippingRates, commissionSchedules, marketplace])
 
   const addProduct = async (product: Omit<ProductInsert, 'store_id'>) => {
     if (!storeId) return null
@@ -109,10 +101,9 @@ export function useProducts(
       .maybeSingle()
     if (error || !data) return null
     const row = data as ProductRow
+    setRawProducts((prev) => [row, ...prev])
     const { profit, commissionResolution } = computeProfit(row, shippingRates, commissionSchedules, marketplace)
-    const enriched: ProductWithProfit = { ...row, profit, commissionResolution }
-    setProducts((prev) => [enriched, ...prev])
-    return enriched
+    return { ...row, profit, commissionResolution }
   }
 
   const updateProduct = async (id: string, updates: ProductUpdate) => {
@@ -125,16 +116,15 @@ export function useProducts(
       .maybeSingle()
     if (error || !data) return null
     const row = data as ProductRow
+    setRawProducts((prev) => prev.map((p) => (p.id === id ? row : p)))
     const { profit, commissionResolution } = computeProfit(row, shippingRates, commissionSchedules, marketplace)
-    const enriched: ProductWithProfit = { ...row, profit, commissionResolution }
-    setProducts((prev) => prev.map((p) => (p.id === id ? enriched : p)))
-    return enriched
+    return { ...row, profit, commissionResolution }
   }
 
   const deleteProduct = async (id: string) => {
     const { error } = await supabase.from('products').delete().eq('id', id)
     if (error) return false
-    setProducts((prev) => prev.filter((p) => p.id !== id))
+    setRawProducts((prev) => prev.filter((p) => p.id !== id))
     return true
   }
 

@@ -7,10 +7,8 @@ import {
     YAxis,
     CartesianGrid,
     Tooltip,
-    Legend,
     ResponsiveContainer,
-    ReferenceLine,
-    ReferenceDot
+    ReferenceLine
 } from 'recharts'
 import { Card } from '@/components/ui/Card'
 import { AlertTriangle, TrendingDown, Package, Crown } from 'lucide-react'
@@ -29,14 +27,14 @@ interface CompetitorWarMapProps {
 }
 
 const MOCK_DATA: WarMapPoint[] = [
-    { date: '1 Şub', myPrice: 100, competitorPrice: 110, myStock: 50, marketAvg: 105, buyboxOwner: 'me' },
-    { date: '3 Şub', myPrice: 100, competitorPrice: 105, myStock: 48, marketAvg: 102, buyboxOwner: 'me' },
-    { date: '5 Şub', myPrice: 100, competitorPrice: 95, myStock: 45, marketAvg: 98, buyboxOwner: 'competitor', event: 'price_drop' },
-    { date: '7 Şub', myPrice: 94, competitorPrice: 95, myStock: 42, marketAvg: 95, buyboxOwner: 'me', event: 'promotion' },
-    { date: '9 Şub', myPrice: 94, competitorPrice: 90, myStock: 35, marketAvg: 92, buyboxOwner: 'competitor' },
-    { date: '11 Şub', myPrice: 89, competitorPrice: 90, myStock: 30, marketAvg: 90, buyboxOwner: 'me' },
-    { date: '13 Şub', myPrice: 89, competitorPrice: 85, myStock: 25, marketAvg: 88, buyboxOwner: 'competitor', event: 'price_drop' },
-    { date: '15 Şub', myPrice: 85, competitorPrice: 85, myStock: 10, marketAvg: 85, buyboxOwner: 'me', event: 'stockout' }, // Critical Stock
+    { date: '1 Şub', price: 100, competitor_price: 110, stock: 50 },
+    { date: '3 Şub', price: 100, competitor_price: 105, stock: 48 },
+    { date: '5 Şub', price: 100, competitor_price: 95, stock: 45, flags: [{ type: 'price_drop' }] },
+    { date: '7 Şub', price: 94, competitor_price: 95, stock: 42, flags: [{ type: 'promotion' }] },
+    { date: '9 Şub', price: 94, competitor_price: 90, stock: 35 },
+    { date: '11 Şub', price: 89, competitor_price: 90, stock: 30 },
+    { date: '13 Şub', price: 89, competitor_price: 85, stock: 25, flags: [{ type: 'price_drop' }] },
+    { date: '15 Şub', price: 85, competitor_price: 85, stock: 10, flags: [{ type: 'stockout' }] },
 ]
 
 export function CompetitorWarMap({ data = MOCK_DATA }: CompetitorWarMapProps) {
@@ -210,8 +208,6 @@ export function CompetitorWarMap({ data = MOCK_DATA }: CompetitorWarMapProps) {
                 const first = data[0];
                 const priceChange = ((last.price - first.price) / first.price) * 100;
                 const avgStock = Math.round(data.reduce((acc, curr) => acc + curr.stock, 0) / data.length);
-                const buyboxWins = data.filter(d => d.flags?.some((f: any) => f.type === 'buybox_won')).length; // Mock logic if flags present
-                // Since flags are simulated, let's use price comparison for buybox win rate
                 const realBuyboxWins = data.filter(d => d.price <= d.competitor_price).length;
                 const winRate = Math.round((realBuyboxWins / data.length) * 100);
 

@@ -131,13 +131,13 @@ async function handlePriceData(msg: ExtensionMessage & { type: 'PRICE_DATA' }): 
     // Try to match product by marketplace_url or name
     const config = { url: auth.supabaseUrl, anonKey: auth.supabaseAnonKey, accessToken: auth.accessToken }
 
-    // Try URL match first
+    // Try URL match first (exact match to prevent injection)
     let matchedProductId: string | null = null
     const urlBase = product.url.split('?')[0]
 
     const urlResult = await selectRows(
         'products',
-        `store_id=eq.${auth.storeId}&marketplace_url=like.*${encodeURIComponent(urlBase.split('/').pop() ?? '')}*&select=id&limit=1`,
+        `store_id=eq.${auth.storeId}&marketplace_url=eq.${encodeURIComponent(urlBase)}&select=id&limit=1`,
         config,
     )
     if (urlResult.data && Array.isArray(urlResult.data) && urlResult.data.length > 0) {

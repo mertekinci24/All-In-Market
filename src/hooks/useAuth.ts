@@ -26,13 +26,13 @@ function sendExtensionMessage(message: object, retryCount = 0): void {
       if (lastError) {
         const errMsg = lastError.message ?? ''
         // "Receiving end does not exist" = Service Worker sleeping or not yet loaded.
-        // Retry up to 3 times (2s → 5s → give up) to handle cold-start latency.
-        if (errMsg.includes('Receiving end') && retryCount < 2) {
-          const delay = retryCount === 0 ? 2000 : 5000
-          console.warn(`[Sky Dashboard] Extension not ready, retrying in ${delay}ms... (attempt ${retryCount + 1}/2)`)
+        // Retry up to 5 times with exponential backoff (2s, 4s, 8s, 16s, 32s) to handle cold-start latency on slow devices.
+        if (errMsg.includes('Receiving end') && retryCount < 5) {
+          const delay = Math.pow(2, retryCount + 1) * 1000 // 2s, 4s, 8s, 16s, 32s
+          console.warn(`[Sky Dashboard] Extension not ready, retrying in ${delay}ms... (attempt ${retryCount + 1}/5)`)
           setTimeout(() => sendExtensionMessage(message, retryCount + 1), delay)
         } else {
-          console.warn('[Sky Dashboard] Extension not reachable:', errMsg)
+          console.warn('[Sky Dashboard] Extension not reachable after 5 retries:', errMsg)
         }
       } else {
         console.log('[Sky Dashboard] Extension sync ✓', (message as Record<string, unknown>).type, '← Response:', response)

@@ -389,6 +389,13 @@ supabase/functions/
 
 ## 📜 CHANGELOG
 
+### [1.4.2] — 2026-03-11
+- **BUG-13 FIXED** — Removed unused imports in CompetitorWarMap, ResearchPage, OpportunityTable. Fixed type mismatches. Build now passes cleanly.
+- **BUG-04 FIXED** — useProducts effect condition changed from OR to AND. Re-enrichment only triggers when both shipping rates and commission schedules are loaded.
+- **BUG-02 FIXED** — URL matching changed from LIKE pattern to exact match (eq filter) in background.js/ts to prevent SQL-style injection via wildcard characters.
+- **TD-21 FIXED** — useProducts performance optimized. Changed from O(n) re-enrichment on every prop change to useMemo-based memoization. Products computed only when dependencies change.
+- **TD-15 FIXED** — Auth bridge retry increased from 2 to 5 attempts with exponential backoff (2s, 4s, 8s, 16s, 32s). Handles slow network and service worker cold starts.
+
 ### [1.4.1-rc7] — 2026-02-18
 - `background.js` — Fixed Invalid JWT: enforced global config for all API calls
 - `background.js` — Auto-logout on 401/403 responses
