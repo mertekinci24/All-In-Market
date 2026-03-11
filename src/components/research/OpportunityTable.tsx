@@ -7,7 +7,7 @@ import {
     getSortedRowModel,
 } from '@tanstack/react-table'
 import type { SortingState } from '@tanstack/react-table'
-import { ArrowUpDown, ExternalLink, PieChart, Trash2 } from 'lucide-react'
+import { ArrowUpDown, ExternalLink, ChartPie as PieChart, Trash2 } from 'lucide-react'
 import type { ProductMining } from '@/hooks/useProductMining'
 
 interface OpportunityTableProps {

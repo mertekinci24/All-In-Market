@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Pickaxe, Search, BarChart2, Trash2, TrendingUp, ExternalLink, Brain, X, PieChart, Download, Swords, LayoutGrid, LayoutList } from 'lucide-react'
+import { Pickaxe, Search, ChartBar as BarChart2, Trash2, TrendingUp, ExternalLink, Brain, X, ChartPie as PieChart, Download, Swords, LayoutGrid, LayoutList } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { useStore } from '@/hooks/useStore'

@@ -11,7 +11,7 @@ import {
     ReferenceLine
 } from 'recharts'
 import { Card } from '@/components/ui/Card'
-import { AlertTriangle, TrendingDown, Package, Crown } from 'lucide-react'
+import { TriangleAlert as AlertTriangle, TrendingDown, Package, Crown } from 'lucide-react'
 
 // Mock Data Interface (To be replaced with real data later)
 interface WarMapPoint {
