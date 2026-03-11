@@ -342,14 +342,78 @@ interface PriceDataResponse {
     }
 
     /* ---------------------------------------------------------------- */
+    /*  DOM Ready Detection (V1.5.0 - BUG-01 Fix)                       */
+    /* ---------------------------------------------------------------- */
+
+    /**
+     * Wait for critical DOM elements to be available
+     * Uses MutationObserver for dynamic detection + 10s timeout fallback
+     */
+    function waitForElement(selector: string, timeout = 10000): Promise<Element | null> {
+        return new Promise((resolve) => {
+            // Check if already exists
+            const existing = document.querySelector(selector)
+            if (existing) {
+                resolve(existing)
+                return
+            }
+
+            // Set up timeout
+            const timer = setTimeout(() => {
+                observer.disconnect()
+                console.warn(LOG_PREFIX, `Element ${selector} not found within ${timeout}ms`)
+                resolve(null)
+            }, timeout)
+
+            // Watch for DOM changes
+            const observer = new MutationObserver(() => {
+                const element = document.querySelector(selector)
+                if (element) {
+                    clearTimeout(timer)
+                    observer.disconnect()
+                    resolve(element)
+                }
+            })
+
+            observer.observe(document.body, {
+                childList: true,
+                subtree: true
+            })
+        })
+    }
+
+    /**
+     * Wait for page to be ready by checking for price element
+     * This is more reliable than static timeout
+     */
+    async function waitForPageReady(): Promise<boolean> {
+        console.log(LOG_PREFIX, 'Waiting for page to load...')
+
+        // Wait for price element (critical for parsing)
+        const priceElement = await waitForElement('.prc-slg, .prc-dsc, .product-price', 10000)
+
+        if (!priceElement) {
+            console.error(LOG_PREFIX, 'Price element not found - page may not be fully loaded')
+            return false
+        }
+
+        console.log(LOG_PREFIX, 'Page ready ✓')
+        return true
+    }
+
+    /* ---------------------------------------------------------------- */
     /*  Main                                                             */
     /* ---------------------------------------------------------------- */
 
     async function run() {
         console.log(LOG_PREFIX, 'Parser loaded on:', window.location.href)
 
-        // Wait for page to fully render (Trendyol uses client-side rendering)
-        await new Promise((resolve) => setTimeout(resolve, 2000))
+        // V1.5.0: Dynamic wait instead of static 2000ms
+        const ready = await waitForPageReady()
+        if (!ready) {
+            console.error(LOG_PREFIX, 'Page not ready, skipping parse')
+            return
+        }
 
         const badge = createBadge()
 

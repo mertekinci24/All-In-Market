@@ -4,6 +4,8 @@
 /* ------------------------------------------------------------------ */
 
 import { insertRow, selectRows, isTokenExpired, refreshToken } from './lib/supabase-rest.js'
+import { getCredentials, hasCredentials, storeCredentials } from './lib/secure-storage.js'
+import { withRefreshLock } from './lib/token-mutex.js'
 import type {
     StoredAuth,
     ExtensionMessage,
@@ -38,37 +40,59 @@ async function ensureValidToken(): Promise<StoredAuth | null> {
 
     if (!isTokenExpired(auth.expiresAt)) return auth
 
-    // Token expired → refresh
-    console.log('[SKY] Token expired, refreshing...')
-    const refreshed = await refreshToken(auth.supabaseUrl, auth.supabaseAnonKey, auth.refreshToken)
-    if (!refreshed) {
-        console.warn('[SKY] Token refresh failed')
-        await chrome.storage.local.remove('auth')
-        return null
-    }
+    // Token expired → refresh with mutex (TD-17 fix)
+    console.log('[SKY] Token expired, refreshing with mutex...')
 
-    const updated: StoredAuth = {
-        ...auth,
-        accessToken: refreshed.accessToken,
-        refreshToken: refreshed.refreshToken,
-        expiresAt: refreshed.expiresAt,
-    }
-    await setAuth(updated)
-    return updated
+    const refreshed = await withRefreshLock(async () => {
+        // Double-check token hasn't been refreshed by another tab
+        const currentAuth = await getAuth()
+        if (currentAuth && !isTokenExpired(currentAuth.expiresAt)) {
+            console.log('[SKY] Token already refreshed by another tab')
+            return currentAuth
+        }
+
+        // Perform refresh
+        const result = await refreshToken(auth.supabaseUrl, auth.supabaseAnonKey, auth.refreshToken)
+        if (!result) {
+            console.warn('[SKY] Token refresh failed')
+            await chrome.storage.local.remove('auth')
+            return null
+        }
+
+        const updated: StoredAuth = {
+            ...auth,
+            accessToken: result.accessToken,
+            refreshToken: result.refreshToken,
+            expiresAt: result.expiresAt,
+        }
+        await setAuth(updated)
+        console.log('[SKY] Token refreshed successfully')
+        return updated
+    })
+
+    return refreshed
 }
 
 /* ------------------------------------------------------------------ */
 /*  Message Handlers                                                   */
 /* ------------------------------------------------------------------ */
 
-import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js'
-
 async function handleAuthToken(msg: ExtensionMessage & { type: 'AUTH_TOKEN' }): Promise<{ success: boolean }> {
-    const { accessToken, refreshToken: rt, expiresAt, userId } = msg.payload
+    const { accessToken, refreshToken: rt, expiresAt, userId, supabaseUrl, supabaseAnonKey } = msg.payload
 
-    // Use hardcoded config from config.ts
-    const supabaseUrl = SUPABASE_URL
-    const supabaseAnonKey = SUPABASE_ANON_KEY
+    // V1.5.0: Credentials come from Dashboard, not hardcoded
+    if (!supabaseUrl || !supabaseAnonKey) {
+        console.error('[SKY] Missing Supabase credentials in AUTH_TOKEN message')
+        return { success: false }
+    }
+
+    // Store credentials securely in chrome.storage.sync
+    try {
+        await storeCredentials({ url: supabaseUrl, anonKey: supabaseAnonKey })
+        console.log('[SKY] Credentials stored securely')
+    } catch (err) {
+        console.error('[SKY] Failed to store credentials:', err)
+    }
 
     // Fetch storeId from Supabase
     let storeId: string | null = null

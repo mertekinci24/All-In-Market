@@ -45,6 +45,11 @@ function sendExtensionMessage(message: object, retryCount = 0): void {
 
 function syncSessionToExtension(session: Session): void {
   if (!session.access_token || !session.refresh_token) return
+
+  // V1.5.0: Send Supabase credentials to extension for secure storage
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string
+  const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string
+
   sendExtensionMessage({
     type: 'AUTH_TOKEN',
     payload: {
@@ -52,6 +57,8 @@ function syncSessionToExtension(session: Session): void {
       refreshToken: session.refresh_token,
       expiresAt: session.expires_at ?? Math.floor(Date.now() / 1000) + 3600,
       userId: session.user.id,
+      supabaseUrl,
+      supabaseAnonKey,
     }
   })
 }
