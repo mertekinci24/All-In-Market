@@ -64,6 +64,12 @@ export interface Database {
           return_rate: number
           logistics_type: string
           service_fee: number
+          content_id: string | null
+          seller_id: string | null
+          brand_name: string | null
+          rating: number | null
+          review_count: number | null
+          rich_data: Json | null
           created_at: string
           updated_at: string
         }
@@ -91,6 +97,12 @@ export interface Database {
           return_rate?: number
           logistics_type?: string
           service_fee?: number
+          content_id?: string | null
+          seller_id?: string | null
+          brand_name?: string | null
+          rating?: number | null
+          review_count?: number | null
+          rich_data?: Json | null
           created_at?: string
           updated_at?: string
         }
@@ -118,6 +130,12 @@ export interface Database {
           return_rate?: number
           logistics_type?: string
           service_fee?: number
+          content_id?: string | null
+          seller_id?: string | null
+          brand_name?: string | null
+          rating?: number | null
+          review_count?: number | null
+          rich_data?: Json | null
           created_at?: string
           updated_at?: string
         }

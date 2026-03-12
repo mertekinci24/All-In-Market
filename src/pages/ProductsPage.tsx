@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react'
 import { useToast } from '@/components/ui/Toast'
 import {
   Plus, Search, Pencil, Trash2, ArrowUpDown,
-  ChevronLeft, ChevronRight, ChevronDown, X, SlidersHorizontal, Package,
+  ChevronLeft, ChevronRight, ChevronDown, X, SlidersHorizontal, Package, Sparkles,
 } from 'lucide-react'
 import { Header } from '@/components/layout/Header'
 import { Button } from '@/components/ui/Button'
@@ -10,6 +10,7 @@ import { Card } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { ProductModal } from '@/components/products/ProductModal'
 import { DeleteConfirm } from '@/components/products/DeleteConfirm'
+import { ProductAIChatModal } from '@/components/products/ProductAIChatModal'
 import { cn } from '@/lib/utils'
 import type { ProductWithProfit } from '@/hooks/useProducts'
 import type { ProductFormData } from '@/components/products/ProductModal'
@@ -47,6 +48,7 @@ export function ProductsPage({ products, loading, onAdd, onUpdate, onDelete }: P
   const [stockFilter, setStockFilter] = useState<StockFilter>('all')
   const [profitFilter, setProfitFilter] = useState<ProfitFilter>('all')
   const [showFilters, setShowFilters] = useState(false)
+  const [aiChatProduct, setAiChatProduct] = useState<ProductRow | null>(null)
 
   const categories = useMemo(() => {
     const cats = new Set<string>()
@@ -349,6 +351,13 @@ export function ProductsPage({ products, loading, onAdd, onUpdate, onDelete }: P
                         <td className="px-4 py-3 text-center">
                           <div className="flex items-center justify-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                             <button
+                              onClick={() => setAiChatProduct(product)}
+                              className="flex h-7 w-7 items-center justify-center rounded-lg text-blue-500 transition-colors hover:bg-blue-500/10 hover:text-blue-400"
+                              title="AI Danışman"
+                            >
+                              <Sparkles className="h-3.5 w-3.5" />
+                            </button>
+                            <button
                               onClick={() => { setEditProduct(product); setModalOpen(true) }}
                               className="flex h-7 w-7 items-center justify-center rounded-lg text-gray-500 transition-colors hover:bg-white/5 hover:text-gray-300"
                             >
@@ -430,6 +439,12 @@ export function ProductsPage({ products, loading, onAdd, onUpdate, onDelete }: P
         onClose={() => setDeleteTarget(null)}
         onConfirm={handleDelete}
         loading={deleting}
+      />
+
+      <ProductAIChatModal
+        isOpen={!!aiChatProduct}
+        onClose={() => setAiChatProduct(null)}
+        product={aiChatProduct}
       />
     </div>
   )

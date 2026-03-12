@@ -13,18 +13,84 @@ export interface StoredAuth {
     storeId: string | null
 }
 
-/** Parsed product data from Trendyol */
+/** Parsed product data from Trendyol (Ultra-rich version) */
 export interface TrendyolProductData {
+    // Basic Info
     url: string
+    contentId: string | null
     productName: string
-    currentPrice: number
-    originalPrice: number | null   // Crossed-out price if on sale
-    sellerName: string
+    brandName: string | null
     category: string | null
-    imageUrl: string | null
+
+    // Pricing
+    currentPrice: number
+    originalPrice: number | null
+    discountPercentage: number | null
+    campaignName: string | null
+
+    // Seller
+    sellerId: string | null
+    sellerName: string
+    sellerRating: number | null
+    sellerFollowers: number | null
+    sellerBadges: string[]
+
+    // Stock & Availability
+    stockStatus: string
+    stockQuantity: number | null
+    deliveryTime: string | null
+
+    // Reviews & Rating
     rating: number | null
     reviewCount: number | null
-    brandName: string | null
+    reviewBreakdown: {
+        five: number
+        four: number
+        three: number
+        two: number
+        one: number
+    } | null
+    topReviews: Array<{
+        text: string
+        rating: number
+        date: string | null
+        verified: boolean
+    }> | null
+
+    // Media
+    imageUrl: string | null
+    allImages: string[]
+    videoUrl: string | null
+
+    // Variants
+    variants: Array<{
+        type: string
+        options: string[]
+    }> | null
+
+    // Specifications
+    specifications: Record<string, string> | null
+
+    // Shipping
+    freeShipping: boolean
+    freeShippingThreshold: number | null
+    shippingCost: number | null
+
+    // Engagement
+    favoriteCount: number | null
+    questionCount: number | null
+
+    // Competition
+    similarProducts: Array<{
+        name: string
+        price: number
+        url: string
+    }> | null
+    frequentlyBoughtTogether: Array<{
+        name: string
+        price: number
+        url: string
+    }> | null
 }
 
 /* ------------------------------------------------------------------ */

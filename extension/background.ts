@@ -197,8 +197,55 @@ async function handlePriceData(msg: ExtensionMessage & { type: 'PRICE_DATA' }): 
             return { success: false, error: snapshotRes.error }
         }
 
-        // Also update product's sales_price and last_scraped
+        // Update product with ALL scraped data (ultra-rich data mode)
         const updateEndpoint = `${auth.supabaseUrl}/rest/v1/products?id=eq.${matchedProductId}`
+
+        // Build rich_data JSON with all extended information
+        const richData = {
+            // Pricing details
+            discount_percentage: product.discountPercentage,
+            campaign_name: product.campaignName,
+
+            // Seller details
+            seller_rating: product.sellerRating,
+            seller_followers: product.sellerFollowers,
+            seller_badges: product.sellerBadges,
+
+            // Stock & Availability
+            stock_quantity: product.stockQuantity,
+            delivery_time: product.deliveryTime,
+
+            // Reviews (detailed)
+            review_breakdown: product.reviewBreakdown,
+            top_reviews: product.topReviews,
+
+            // Media
+            all_images: product.allImages,
+            video_url: product.videoUrl,
+
+            // Variants
+            variants: product.variants,
+
+            // Specifications
+            specifications: product.specifications,
+
+            // Shipping
+            free_shipping: product.freeShipping,
+            free_shipping_threshold: product.freeShippingThreshold,
+            shipping_cost: product.shippingCost,
+
+            // Engagement
+            favorite_count: product.favoriteCount,
+            question_count: product.questionCount,
+
+            // Competition
+            similar_products: product.similarProducts,
+            frequently_bought_together: product.frequentlyBoughtTogether,
+
+            // Meta
+            last_enriched: new Date().toISOString(),
+        }
+
         await fetch(updateEndpoint, {
             method: 'PATCH',
             headers: {
@@ -209,9 +256,17 @@ async function handlePriceData(msg: ExtensionMessage & { type: 'PRICE_DATA' }): 
             body: JSON.stringify({
                 sales_price: product.currentPrice,
                 competitor_price: product.originalPrice,
+                content_id: product.contentId,
+                seller_id: product.sellerId,
+                brand_name: product.brandName,
+                rating: product.rating,
+                review_count: product.reviewCount,
+                rich_data: richData,
                 last_scraped: new Date().toISOString(),
             }),
         })
+
+        console.log('[SKY] Ultra-rich data saved for product:', matchedProductId)
 
         console.log('[SKY] Price snapshot saved for product:', matchedProductId)
         return { success: true, matchedProductId }
