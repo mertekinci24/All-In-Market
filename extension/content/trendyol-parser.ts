@@ -203,7 +203,7 @@ interface PriceDataResponse {
                     if (json.productId) return String(json.productId)
                 }
             }
-        } catch (e) {
+        } catch {
             // Silent fail
         }
 
@@ -253,7 +253,7 @@ interface PriceDataResponse {
                     else if (index === 4) reviewBreakdown.one = count
                 }
             })
-        } catch (e) {
+        } catch {
             // Silent fail
         }
 
@@ -274,7 +274,7 @@ interface PriceDataResponse {
                     topReviews.push({ text, rating, date: dateText, verified })
                 }
             }
-        } catch (e) {
+        } catch {
             // Silent fail
         }
 
@@ -321,7 +321,7 @@ interface PriceDataResponse {
                     variants.push({ type, options })
                 }
             })
-        } catch (e) {
+        } catch {
             // Silent fail
         }
 
@@ -348,7 +348,7 @@ interface PriceDataResponse {
                     }
                 })
             }
-        } catch (e) {
+        } catch {
             // Silent fail
         }
 
@@ -366,7 +366,7 @@ interface PriceDataResponse {
 
         let freeShippingThreshold: number | null = null
         if (freeShippingText && freeShippingText.includes('TL')) {
-            const match = freeShippingText.match(/(\d+[\.,]?\d*)\s*TL/)
+            const match = freeShippingText.match(/(\d+[.,]?\d*)\s*TL/)
             if (match) {
                 freeShippingThreshold = parseFloat(match[1].replace(',', '.'))
             }
@@ -424,7 +424,7 @@ interface PriceDataResponse {
                     }
                 })
             }
-        } catch (e) {
+        } catch {
             // Silent fail
         }
 
@@ -450,7 +450,7 @@ interface PriceDataResponse {
                     }
                 })
             }
-        } catch (e) {
+        } catch {
             // Silent fail
         }
 
@@ -470,7 +470,7 @@ interface PriceDataResponse {
 
                 for (const item of items) {
                     if (item['@type'] === 'Product') {
-                        const result: any = {}
+                        const result: Partial<TrendyolProductData> = {}
 
                         // Name
                         if (item.name) result.productName = item.name
@@ -519,8 +519,8 @@ interface PriceDataResponse {
                     }
                 }
             }
-        } catch (e) {
-            console.error('[SKY] JSON-LD error:', e)
+        } catch (error) {
+            console.error('[SKY] JSON-LD error:', error)
         }
         return null
     }

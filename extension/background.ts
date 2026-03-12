@@ -4,7 +4,7 @@
 /* ------------------------------------------------------------------ */
 
 import { insertRow, selectRows, isTokenExpired, refreshToken } from './lib/supabase-rest.js'
-import { getCredentials, hasCredentials, storeCredentials } from './lib/secure-storage.js'
+import { storeCredentials } from './lib/secure-storage.js'
 import { withRefreshLock } from './lib/token-mutex.js'
 import type {
     StoredAuth,

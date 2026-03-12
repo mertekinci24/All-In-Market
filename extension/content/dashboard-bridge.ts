@@ -63,7 +63,7 @@
                 supabaseUrl: '',
                 supabaseAnonKey: '',
             },
-        }, (response) => {
+        }, () => {
             if (chrome.runtime.lastError) {
                 // Console clutter reduction
                 // console.warn(LOG_PREFIX, 'Send failed:', chrome.runtime.lastError.message)
