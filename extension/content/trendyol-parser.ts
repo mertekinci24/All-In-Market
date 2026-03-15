@@ -26,6 +26,7 @@ interface TrendyolProductData {
     sellerBadges: string[]
 
     // Stock & Availability
+    isAvailable: boolean
     stockStatus: string
     stockQuantity: number | null
     deliveryTime: string | null
@@ -106,10 +107,11 @@ interface PriceDataResponse {
     /* ---------------------------------------------------------------- */
 
     const SELECTORS = {
-        // Price - Updated for 2026 Trendyol layout
-        currentPrice: '.product-price-container .prc-dsc, .product-price-container .prc-slg, .ps-product-price .price, .pr-bx-w .prc-box-sll, .prc-box-sll, .product-price-container',
-        originalPrice: '.product-price-container .prc-org, .ps-product-price .original-price',
+        // Price - BULLETPROOF: Discounted price FIRST, then single price
+        currentPrice: '.prc-dsc, .product-price-container .prc-dsc, .prc-slg, .product-price-container .prc-slg, .ps-product-price .price, .pr-bx-w .prc-box-sll, .prc-box-sll',
+        originalPrice: '.prc-org, .product-price-container .prc-org, .ps-product-price .original-price',
         discountBadge: '.dsct-bdg, .discount-badge, .product-discount-percentage',
+        addToCartButton: '.add-to-basket, button[class*="basket"], button[class*="sepet"]',
 
         // Product name
         productName: '.pr-new-br h1.pr-new-br span, h1.pr-new-br, .product-detail-name',
@@ -170,7 +172,22 @@ interface PriceDataResponse {
             .replace(/\./g, '')         // Remove thousand separators
             .replace(',', '.')          // Convert decimal comma to dot
         const num = parseFloat(cleaned)
-        return isNaN(num) ? null : num
+        return isNaN(num) || num <= 0 ? null : num
+    }
+
+    function parseSafeNumber(text: string | null, fallback: number | null = null): number | null {
+        if (!text) return fallback
+        const cleaned = text.replace(/\D/g, '')
+        if (!cleaned) return fallback
+        const num = parseInt(cleaned, 10)
+        return isNaN(num) ? fallback : num
+    }
+
+    function parseSafeFloat(text: string | null, fallback: number | null = null): number | null {
+        if (!text) return fallback
+        const cleaned = text.replace(',', '.')
+        const num = parseFloat(cleaned)
+        return isNaN(num) ? fallback : num
     }
 
     function selectText(selector: string): string | null {
@@ -220,10 +237,10 @@ interface PriceDataResponse {
         const sellerId = sellerLink?.href.match(/\/butik\/(\d+)/)?.[1] ?? null
 
         const ratingText = selectTexts(SELECTORS.sellerRating)
-        const sellerRating = ratingText ? parseFloat(ratingText.replace(',', '.')) : null
+        const sellerRating = parseSafeFloat(ratingText)
 
         const followersText = selectTexts(SELECTORS.sellerFollowers)
-        const sellerFollowers = followersText ? parseInt(followersText.replace(/\D/g, '')) : null
+        const sellerFollowers = parseSafeNumber(followersText)
 
         const badgeElements = document.querySelectorAll(SELECTORS.sellerBadges.split(',').map(s => s.trim()).join(','))
         const sellerBadges = Array.from(badgeElements).map(el => el.textContent?.trim() || '').filter(Boolean)
@@ -389,20 +406,58 @@ interface PriceDataResponse {
         stockQuantity: number | null
     } {
         const favText = selectTexts(SELECTORS.favoriteCount)
-        const favoriteCount = favText ? parseInt(favText.replace(/\D/g, '')) : null
+        const favoriteCount = parseSafeNumber(favText)
 
         const qText = selectTexts(SELECTORS.questionCount)
-        const questionCount = qText ? parseInt(qText.replace(/\D/g, '')) : null
+        const questionCount = parseSafeNumber(qText)
 
         // Stock quantity - try to extract from text like "Son 5 ürün"
         let stockQuantity: number | null = null
         const stockText = selectTexts(SELECTORS.stockStatus)
         if (stockText) {
             const match = stockText.match(/(\d+)\s*(ürün|adet)/i)
-            if (match) stockQuantity = parseInt(match[1])
+            if (match) stockQuantity = parseSafeNumber(match[1])
         }
 
         return { favoriteCount, questionCount, stockQuantity }
+    }
+
+    function checkStockAvailability(): boolean {
+        // Check 1: Is "Add to Cart" button present and enabled?
+        const addToCartBtn = document.querySelector(SELECTORS.addToCartButton)
+        if (!addToCartBtn) {
+            console.log(LOG_PREFIX, '[STOCK CHECK] Add to cart button not found → OUT OF STOCK')
+            return false
+        }
+
+        const isDisabled = addToCartBtn.hasAttribute('disabled') || addToCartBtn.classList.contains('disabled')
+        if (isDisabled) {
+            console.log(LOG_PREFIX, '[STOCK CHECK] Add to cart button disabled → OUT OF STOCK')
+            return false
+        }
+
+        // Check 2: Look for "out of stock" text
+        const bodyText = document.body.textContent || ''
+        const outOfStockKeywords = ['tükendi', 'stokta yok', 'stok kalmadı', 'tedarik edilemiyor', 'geçici olarak temin edilemiyor']
+        for (const keyword of outOfStockKeywords) {
+            if (bodyText.toLowerCase().includes(keyword.toLowerCase())) {
+                console.log(LOG_PREFIX, `[STOCK CHECK] Found keyword "${keyword}" → OUT OF STOCK`)
+                return false
+            }
+        }
+
+        // Check 3: Stock status element check
+        const stockText = selectTexts(SELECTORS.stockStatus)
+        if (stockText) {
+            const lowerStock = stockText.toLowerCase()
+            if (lowerStock.includes('tükendi') || lowerStock.includes('yok')) {
+                console.log(LOG_PREFIX, '[STOCK CHECK] Stock status text indicates out of stock')
+                return false
+            }
+        }
+
+        console.log(LOG_PREFIX, '[STOCK CHECK] Product is AVAILABLE ✓')
+        return true
     }
 
     function extractSimilarProducts(): Array<{ name: string; price: number; url: string }> | null {
@@ -526,35 +581,52 @@ interface PriceDataResponse {
     }
 
     function parseProductData(): TrendyolProductData | null {
-        console.log(LOG_PREFIX, '🚀 Starting ultra-deep parsing...')
+        console.log(LOG_PREFIX, '🚀 Starting BULLETPROOF ultra-deep parsing...')
 
         // 1. Try JSON-LD first (Most robust)
         const jsonLdData = getJsonLdProduct()
+        console.log(LOG_PREFIX, '  ├─ JSON-LD fallback:', jsonLdData ? 'Available ✓' : 'Not found')
 
         // BASIC INFO
         const contentId = extractContentId()
-        console.log(LOG_PREFIX, '  ├─ Content ID:', contentId)
+        if (!contentId) {
+            console.error('%c[SKY QA ERROR] Content ID extraction FAILED - URL pattern invalid', 'background: red; color: white; font-weight: bold; padding: 4px;')
+        }
+        console.log(LOG_PREFIX, '  ├─ Content ID:', contentId || 'MISSING')
 
+        // CRITICAL: Price with multi-layer fallback
         let currentPrice: number | null | undefined = jsonLdData?.currentPrice
+        let priceStrategy = 'JSON-LD'
+
         if (!currentPrice) {
             const priceText = selectTexts(SELECTORS.currentPrice)
             currentPrice = parsePrice(priceText)
-        }
+            priceStrategy = 'CSS Selector'
 
-        if (!currentPrice) {
-            console.log(LOG_PREFIX, 'Could not find current price (JSON-LD & CSS failed)')
-            return null
+            if (!currentPrice) {
+                console.error('%c[SKY QA ERROR] PRICE PARSING FAILED', 'background: red; color: white; font-weight: bold; padding: 4px;')
+                console.error('[SKY QA ERROR] Strategy exhausted: JSON-LD → CSS Selector → ALL FAILED')
+                console.error('[SKY QA ERROR] Price text found:', priceText || 'NULL')
+                return null
+            }
         }
+        console.log(LOG_PREFIX, '  ├─ Price:', currentPrice, 'TL', `(via ${priceStrategy})`)
 
+        // CRITICAL: Product name
         let productName: string | null | undefined = jsonLdData?.productName
+        let nameStrategy = 'JSON-LD'
+
         if (!productName) {
             productName = selectTexts(SELECTORS.productName)
-        }
+            nameStrategy = 'CSS Selector'
 
-        if (!productName) {
-            console.log(LOG_PREFIX, 'Could not find product name')
-            return null
+            if (!productName) {
+                console.error('%c[SKY QA ERROR] PRODUCT NAME PARSING FAILED', 'background: red; color: white; font-weight: bold; padding: 4px;')
+                console.error('[SKY QA ERROR] Strategy exhausted: JSON-LD → CSS Selector → ALL FAILED')
+                return null
+            }
         }
+        console.log(LOG_PREFIX, '  ├─ Product Name:', productName, `(via ${nameStrategy})`)
 
         let brandName: string | null | undefined = jsonLdData?.brandName
         if (!brandName) {
@@ -591,29 +663,42 @@ interface PriceDataResponse {
         }
         console.log(LOG_PREFIX, '  ├─ Seller:', sellerName, sellerInfo.sellerId ? `(ID: ${sellerInfo.sellerId})` : '')
 
-        // STOCK & AVAILABILITY
+        // STOCK & AVAILABILITY - BULLETPROOF
+        const isAvailable = checkStockAvailability()
         const stockText = selectTexts(SELECTORS.stockStatus)
-        const stockStatus = stockText || 'available'
+        const stockStatus = stockText || (isAvailable ? 'available' : 'out_of_stock')
         const { stockQuantity } = extractEngagementMetrics()
         const { deliveryTime } = extractShippingInfo()
 
-        // REVIEWS & RATING
+        // REVIEWS & RATING - NULL-SAFE
         let rating: number | null | undefined = jsonLdData?.rating
         if (rating === undefined || rating === null) {
             const ratingText = selectTexts(SELECTORS.ratingScore)
-            rating = ratingText ? parseFloat(ratingText.replace(',', '.')) : null
+            rating = parseSafeFloat(ratingText)
+        }
+        // Final NaN guard
+        if (rating !== null && isNaN(rating)) {
+            console.warn('[SKY QA WARNING] Rating is NaN, setting to null')
+            rating = null
         }
 
         let reviewCount: number | null | undefined = jsonLdData?.reviewCount
         if (reviewCount === undefined || reviewCount === null) {
             const reviewText = selectTexts(SELECTORS.reviewCount)
-            reviewCount = reviewText ? parseInt(reviewText.replace(/\D/g, ''), 10) : null
+            reviewCount = parseSafeNumber(reviewText)
+        }
+        // Final NaN guard
+        if (reviewCount !== null && isNaN(reviewCount)) {
+            console.warn('[SKY QA WARNING] Review count is NaN, setting to null')
+            reviewCount = null
         }
 
         const { reviewBreakdown, topReviews } = extractReviewData()
-        console.log(LOG_PREFIX, '  ├─ Reviews:', reviewCount, 'reviews', rating ? `(${rating}★)` : '')
-        if (topReviews) {
+        console.log(LOG_PREFIX, '  ├─ Reviews:', reviewCount ?? 0, 'reviews', rating ? `(${rating}★)` : '(No rating)')
+        if (topReviews && topReviews.length > 0) {
             console.log(LOG_PREFIX, `  │  └─ Extracted ${topReviews.length} detailed reviews`)
+        } else {
+            console.log(LOG_PREFIX, '  │  └─ No reviews available (NEW PRODUCT or ZERO REVIEWS)')
         }
 
         // MEDIA
@@ -652,9 +737,10 @@ interface PriceDataResponse {
             console.log(LOG_PREFIX, `  ├─ Similar products: ${similarProducts.length}`)
         }
 
-        console.log(LOG_PREFIX, '✅ Ultra-deep parsing complete!')
+        console.log(LOG_PREFIX, '✅ BULLETPROOF ultra-deep parsing complete!')
+        console.log(LOG_PREFIX, '  └─ Availability:', isAvailable ? '✓ IN STOCK' : '✗ OUT OF STOCK')
 
-        return {
+        const finalData: TrendyolProductData = {
             // Basic Info
             url: window.location.href,
             contentId,
@@ -676,11 +762,12 @@ interface PriceDataResponse {
             sellerBadges: sellerInfo.sellerBadges,
 
             // Stock & Availability
+            isAvailable,
             stockStatus,
             stockQuantity,
             deliveryTime,
 
-            // Reviews & Rating
+            // Reviews & Rating - BULLETPROOF: Final NaN check
             rating: rating && !isNaN(rating) ? rating : null,
             reviewCount: reviewCount && !isNaN(reviewCount) ? reviewCount : null,
             reviewBreakdown,
@@ -710,6 +797,14 @@ interface PriceDataResponse {
             similarProducts,
             frequentlyBoughtTogether,
         }
+
+        // FINAL VALIDATION
+        if (!finalData.currentPrice || finalData.currentPrice <= 0) {
+            console.error('%c[SKY QA ERROR] FINAL VALIDATION FAILED: Invalid price in final data', 'background: red; color: white; font-weight: bold; padding: 4px;')
+            return null
+        }
+
+        return finalData
     }
 
     /* ---------------------------------------------------------------- */
@@ -869,6 +964,76 @@ interface PriceDataResponse {
     }
 
     /* ---------------------------------------------------------------- */
+    /*  Dynamic Variant Detection (MutationObserver)                     */
+    /* ---------------------------------------------------------------- */
+
+    let lastParsedPrice: number | null = null
+    let variantObserver: MutationObserver | null = null
+    let debounceTimer: number | null = null
+
+    function setupVariantWatcher(badge: HTMLElement) {
+        console.log(LOG_PREFIX, '🔍 Setting up variant change watcher...')
+
+        // Target price container for changes
+        const priceContainer = document.querySelector('.product-price-container, .pr-bx-w, .product-detail-price')
+        if (!priceContainer) {
+            console.warn(LOG_PREFIX, 'Price container not found, variant watcher disabled')
+            return
+        }
+
+        variantObserver = new MutationObserver(() => {
+            // Debounce: Wait 500ms after last change before re-parsing
+            if (debounceTimer) clearTimeout(debounceTimer)
+
+            debounceTimer = window.setTimeout(() => {
+                console.log(LOG_PREFIX, '🔄 Variant change detected! Re-parsing...')
+                updateBadge(badge, 'scanning', 'Varyant değişti...')
+
+                const newData = parseProductData()
+                if (!newData) {
+                    updateBadge(badge, 'error', 'Veri okunamadı')
+                    return
+                }
+
+                // Check if price actually changed
+                if (newData.currentPrice === lastParsedPrice) {
+                    console.log(LOG_PREFIX, 'Price unchanged, skipping update')
+                    return
+                }
+
+                lastParsedPrice = newData.currentPrice
+                console.log(LOG_PREFIX, '✅ New variant price:', newData.currentPrice, 'TL')
+                updateBadge(badge, 'scanning', `${newData.currentPrice} TL`)
+
+                // Send updated data
+                chrome.runtime.sendMessage(
+                    { type: 'PRICE_DATA', payload: newData },
+                    (response: PriceDataResponse) => {
+                        if (chrome.runtime.lastError) {
+                            console.error(LOG_PREFIX, chrome.runtime.lastError.message)
+                            return
+                        }
+
+                        if (response.success && response.matchedProductId) {
+                            updateBadge(badge, 'success', `${newData.currentPrice} TL → Güncellendi`)
+                        } else {
+                            updateBadge(badge, 'no-match', response.error || 'Ürün eşleşmedi')
+                        }
+                    },
+                )
+            }, 500)
+        })
+
+        variantObserver.observe(priceContainer, {
+            childList: true,
+            subtree: true,
+            characterData: true,
+        })
+
+        console.log(LOG_PREFIX, '✅ Variant watcher active')
+    }
+
+    /* ---------------------------------------------------------------- */
     /*  Main                                                             */
     /* ---------------------------------------------------------------- */
 
@@ -891,8 +1056,12 @@ interface PriceDataResponse {
             return
         }
 
+        lastParsedPrice = data.currentPrice
         console.log(LOG_PREFIX, 'Parsed:', data.productName, '→', data.currentPrice, 'TL')
         updateBadge(badge, 'scanning', `${data.currentPrice} TL`)
+
+        // Setup variant watcher for dynamic price changes
+        setupVariantWatcher(badge)
 
         // Send to background
         chrome.runtime.sendMessage(
