@@ -36,6 +36,7 @@ export interface TrendyolProductData {
     sellerBadges: string[]
 
     // Stock & Availability
+    isAvailable: boolean
     stockStatus: string
     stockQuantity: number | null
     deliveryTime: string | null
